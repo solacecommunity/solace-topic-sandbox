@@ -27,9 +27,11 @@
     advancedPublishCount: 0,
     advancedPayloadEdited: false,
     advancedTried: false,
+    advancedIntroState: 'pending',    // pending|done
+    advancedIntroStep: -1,
     tryAdvancedState: 'pending',      // pending|suggested|dismissed|done
     taxonomyState: 'pending',         // pending|suggested|dismissed|done
-    activeSuggestion: '',             // try_advanced|topic_taxonomy|topic_taxonomy_info|''
+    activeSuggestion: '',             // try_advanced|advanced_intro_info|topic_taxonomy|topic_taxonomy_info|''
     taxonomyInfoStep: -1
   };
 
@@ -381,8 +383,8 @@
       'status-info'
     );
 
-    titleEl.textContent = title || '';
-    hintEl.textContent = hint || '';
+    pubsub.setHintContent(titleEl, title, true);
+    pubsub.setHintContent(hintEl, hint, true);
   };
 
   // Step 3 banner
@@ -402,8 +404,8 @@
       'status-info'
     );
 
-    titleEl.textContent = title || '';
-    hintEl.textContent = hint || '';
+    pubsub.setHintContent(titleEl, title, true);
+    pubsub.setHintContent(hintEl, hint, true);
     banner.classList.remove('is-hidden');
   };
 
@@ -448,7 +450,7 @@
     }
 
     pubsub.subGuidance.step = stepIndex;
-    titleEl.textContent = banners[stepIndex].title;
+    pubsub.setHintContent(titleEl, banners[stepIndex].title, true);
     pubsub.setHintContent(hintEl, banners[stepIndex].hint, true);
     btn.textContent = 'OK, got it';
     banner.classList.remove('is-hidden');
@@ -495,10 +497,10 @@
     if (!el) {
       return;
     }
-    if (hintIsHtml) {
-      el.innerHTML = hint || '';
-    } else {
+    if (hintIsHtml === false) {
       el.textContent = hint || '';
+    } else {
+      el.innerHTML = hint || '';
     }
   };
 
@@ -519,8 +521,8 @@
       'status-info'
     );
 
-    titleEl.textContent = title || '';
-    pubsub.setHintContent(hintEl, hint, false);
+    pubsub.setHintContent(titleEl, title, true);
+    pubsub.setHintContent(hintEl, hint, true);
     banner.classList.remove('is-hidden');
   };
 
@@ -539,8 +541,8 @@
     if (!banner) {
       return;
     }
-    if (titleEl) { titleEl.textContent = title || ''; }
-    pubsub.setHintContent(hintEl, hint, !!(options && options.hintIsHtml));
+    pubsub.setHintContent(titleEl, title, !(options && options.titleIsHtml === false));
+    pubsub.setHintContent(hintEl, hint, !(options && options.hintIsHtml === false));
     banner.classList.toggle('guidance-banner', isGuidance);
     if (yesBtn) { yesBtn.textContent = yesLabel; }
     if (noBtn) {
@@ -574,6 +576,7 @@
       return;
     }
     pubsub.suggestionMachine.activeSuggestion = '';
+    pubsub.suggestionMachine.advancedIntroStep = -1;
     pubsub.suggestionMachine.taxonomyInfoStep = -1;
     banner.classList.remove('guidance-banner');
     if (yesBtn) {
@@ -623,6 +626,51 @@
         scrollBlock: stepIndex === 1 ? 'end' : 'nearest'
       }
     );
+  };
+
+  pubsub.showAdvancedIntroBanner = function (stepIndex) {
+    var banners = [
+      {
+        title: 'Topic Taxonomy Explained',
+        hint: 'Topic taxonomy is the agreed rules between publishers and subscribers on how a topic is constructed, so that they can coordinate while remaining decoupled.'
+      },
+      {
+        title: 'Current Topic Taxonomy',
+        hint: 'For this \'hello\' message, some elements of the JSON payload are used to be \'properties\' in the topic to enable subscribers to <i>only</i> receive exact messages of interest, when using a suitably constructed subscription pattern. <br/>The taxonomy is as follows: <br/><code>workshop/hello-message/announced/{country}/{language}/{msgId}</code> <br/>with the last 3 levels expected to be dynamic for every message sent.'
+      }
+    ];
+
+    if (stepIndex < 0 || stepIndex >= banners.length) {
+      pubsub.hideActionSuggestionBanner();
+      return;
+    }
+
+    pubsub.suggestionMachine.advancedIntroStep = stepIndex;
+    pubsub.showActionSuggestionBanner(
+      'advanced_intro_info',
+      banners[stepIndex].title,
+      banners[stepIndex].hint,
+      {
+        yesLabel: 'OK, got it',
+        showNo: false,
+        guidance: true,
+        hintIsHtml: true
+      }
+    );
+  };
+
+  pubsub.advanceAdvancedIntroFlow = function () {
+    var m = pubsub.suggestionMachine;
+    var step = m.advancedIntroStep;
+    if (step === 0) {
+      pubsub.showAdvancedIntroBanner(1);
+      return;
+    }
+    if (step === 1) {
+      m.advancedIntroState = 'done';
+      pubsub.hideActionSuggestionBanner();
+      pubsub.checkTopicTaxonomySuggestion();
+    }
   };
 
   pubsub.advanceTopicTaxonomyInfoFlow = function () {
@@ -690,6 +738,9 @@
     if (!m || m.taxonomyState !== 'pending') {
       return;
     }
+    if (m.advancedIntroState !== 'done') {
+      return;
+    }
     if (document.getElementById('tbProp4')) {
       m.taxonomyState = 'done';
       return;
@@ -717,6 +768,10 @@
       }
       if (m.activeSuggestion === 'try_advanced') {
         pubsub.hideActionSuggestionBanner();
+      }
+      if (m.advancedIntroState === 'pending') {
+        pubsub.showAdvancedIntroBanner(0);
+        return;
       }
       pubsub.checkTopicTaxonomySuggestion();
       return;
@@ -755,6 +810,10 @@
       if (!active) {
         return;
       }
+      if (active === 'advanced_intro_info') {
+        pubsub.advanceAdvancedIntroFlow();
+        return;
+      }
       if (active === 'topic_taxonomy_info') {
         pubsub.advanceTopicTaxonomyInfoFlow();
         return;
@@ -781,6 +840,8 @@
       }
       if (activeSuggestion === 'try_advanced') {
         m.tryAdvancedState = 'dismissed';
+      } else if (activeSuggestion === 'advanced_intro_info') {
+        m.advancedIntroState = 'done';
       } else if (activeSuggestion === 'topic_taxonomy') {
         m.taxonomyState = 'dismissed';
       } else if (activeSuggestion === 'topic_taxonomy_info') {
