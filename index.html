@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements.  See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership.  The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+-->
+
+<html lang="en">
+  <head>
+    <title>Solace Topic Publisher + Subscriber</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge;" />
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- App styles (dedicated) -->
+    <link rel="stylesheet" href="resources/css/styles.css" />
+
+    <!-- Load Solace Web Messaging API for JavaScript -->
+    <script defer src="resources/lib/solclient.js"></script>
+
+    <!-- Load the combined pub/sub application logic -->
+    <script defer src="resources/scripts/PubSubApp.js"></script>
+
+    <!-- Initialize the app after deferred scripts are loaded -->
+    <script>
+      window.addEventListener('load', function () {
+        if (!window.PubSubApp || typeof window.PubSubApp.init !== 'function') {
+          try {
+            var logEl = document.getElementById('log');
+            if (logEl) {
+              logEl.value += '[ERROR] PubSubApp.js did not load or did not initialize correctly.\n' +
+                'Check that PubSubApp.js is in the same folder as pubsub.html and that the filename/case matches.\n' +
+                'Also check the browser console/network tab for a 404 or script error.\n';
+            }
+          } catch (e) { /* ignore */ }
+          console.error('PubSubApp is not defined. Likely PubSubApp.js failed to load or errored.');
+          return;
+        }
+
+        window.PubSubApp.init();
+      });
+    </script>
+  </head>
+
+  <body>
+    <header class="header">
+      <img src="resources/images/solace-logo.png" alt="Solace" class="logo" />
+      <h1>Topic Publisher + Subscriber</h1>
+    </header>
+
+    <main class="container">
+
+      <!-- Step 1 (starts open) -->
+      <details open class="card" id="step1Card">
+        <summary>Step 1: Event Broker Connection and Credentials</summary>
+        <div class="card-body">
+          <div class="form-grid">
+            <label for="hosturl">Solace WebSocket URL</label>
+            <input id="hosturl" type="text" value="wss://public.messaging.solace.cloud:443" />
+
+            <label for="message-vpn">Message VPN</label>
+            <input id="message-vpn" type="text" value="public" />
+
+            <label for="username">Username</label>
+            <input id="username" type="text" value="dev-workshop" />
+
+            <label for="password">Password</label>
+            <input id="password" type="password" value="password" />
+
+            <label for="displayName">What's your name?</label>
+            <input id="displayName" type="text" placeholder="Jane Smith" />
+          </div>
+        </div>
+      </details>
+
+      <!-- Step 2 (starts open) -->
+      <details open class="card" id="step2Card">
+        <summary>Step 2: Connect to your broker</summary>
+        <div class="card-body">
+          <p class="section-desc">Connect to establish a session before subscribing or publishing.</p>
+
+          <!-- Inline status/help banner (connection only) -->
+          <div id="statusBanner" class="status-banner status-info" role="status" aria-live="polite">
+            <div class="status-title" id="statusTitle">Disconnected</div>
+            <div class="status-hint" id="statusHint">Enter your broker details in Step 1, then click Connect.</div>
+          </div>
+
+          <button type="button" class="ports-btn ports-btn-primary" id="connectToggle">Connect</button>
+        </div>
+      </details>
+
+      <!-- Step 3 (starts closed) -->
+      <details class="card" id="step3Card">
+        <summary>Step 3: Subscribe to receive messages</summary>
+        <div class="card-body">
+          <p class="section-desc">
+            Add one or more subscription patterns. The table shows status, plus message counts and last-received time
+            (matched in the browser based on topic patterns).
+          </p>
+
+          <div class="sub-input-row">
+            <div class="sub-input-col">
+              <label for="subTopic">Subscription Pattern</label>
+              <input class="sub-input" id="subTopic" type="text" value="workshop/*" />
+            </div>
+
+            <button type="button" class="ports-btn ports-btn-primary sub-btn" id="addSub">Add Subscription</button>
+          </div>
+
+          <div id="pubSubSuggestionsLabel" class="pub-sub-suggestions-label">
+            <label class="pub-sub-suggestions-title">Suggested Subscription Patterns:</label>
+            <div id="pubSubSuggestions" class="pub-sub-suggestions-list"></div>
+          </div>
+
+          <div id="subsEmptyHint" class="subs-empty-hint-spaced">(No subscriptions yet)</div>
+
+          <table class="subs-table is-hidden" id="subsTable">
+            <thead>
+              <tr>
+                <th>Pattern</th>
+                <th>Status</th>
+                <th>Msgs</th>
+                <th>Last Received</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="subsTbody"></tbody>
+          </table>
+
+          <!-- Step 3 specific error/status banner (hidden by default) -->
+          <div id="subStatusBanner" class="status-banner status-warn is-hidden section-status" role="status" aria-live="polite">
+            <div class="status-title" id="subStatusTitle"></div>
+            <div class="status-hint" id="subStatusHint"></div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Step 4 (starts closed) -->
+      <details class="card" id="step4Card">
+        <summary>Step 4: Publish a message</summary>
+        <div class="card-body">
+          <div class="step4-top-row">
+            <p class="section-desc section-desc-tight">Publish messages to a topic. Subscribers matching the topic will receive them.</p>
+            <div class="style-toggle style-toggle-offset">
+              <label class="toggle-group-title">Topic Taxonomy Style</label>
+              <label class="radio-option-spaced"><input type="radio" name="publishStyle" value="basic" checked /> Basic</label>
+              <label><input type="radio" name="publishStyle" value="advanced" /> Advanced</label>
+            </div>
+          </div>
+
+          <!-- Basic mode fields -->
+          <div id="basicOptions">
+            <div class="form-grid form-grid-single form-grid-top-gap">
+              <label for="pubTopic">Topic</label>
+              <input id="pubTopic" type="text" value="workshop/message" />
+
+              <label for="payload">Payload</label>
+              <textarea id="payload" rows="4">Hello World!</textarea>
+            </div>
+          </div>
+
+          <div id="advancedOptions" class="is-hidden">
+            <div id="topicBuilderSection" class="topic-builder-section">
+              <div class="step4-adv-header-row">
+                <div class="topic-builder-title">Topic Taxonomy Builder</div>
+              </div>
+
+              <div class="form-grid topic-builder-grid">
+                <div>
+                  <label for="tbDomain">Domain</label>
+                  <input id="tbDomain" type="text" placeholder="{app-domain}" value="workshop"/>
+                </div>
+                <div>
+                  <label for="tbNoun">Noun</label>
+                  <input id="tbNoun" type="text" placeholder="{data-object}" value="hello-message"/>
+                </div>
+                <div>
+                  <label for="tbVerb">Verb</label>
+                  <input id="tbVerb" type="text" placeholder="{what-happened}" value="announced"/>
+                </div>
+                <div>
+                  <label for="tbProp1">Property</label>
+                  <input id="tbProp1" type="text" placeholder="{metadata-1}" value="united-states" />
+                </div>
+                <div>
+                  <label for="tbProp2">Property</label>
+                  <input id="tbProp2" type="text" placeholder="{metadata-2}" value="en" />
+                </div>
+                <div>
+                  <label for="tbProp3">Property</label>
+                  <input id="tbProp3" type="text" placeholder="{metadata-3}" value="0001" />
+                </div>
+                <div class="topic-builder-clear-wrap">
+                  <button type="button" class="ports-btn" id="clearTopicBuilder">Clear</button>
+                  <button type="button" class="ports-btn" id="resetTopicBuilder">Reset</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-grid form-grid-single form-grid-top-gap topic-field-divider">
+              <label for="generatedTopic">Topic</label>
+              <input id="generatedTopic" type="text" />
+
+              <label for="payloadAdvanced">Payload</label>
+              <textarea id="payloadAdvanced" rows="12">{
+  "eventType": "Hello Message",
+  "eventAction": "Announced",
+  "country": "United States",
+  "language": "English",
+  "sender": "Jane Smith",
+  "timezone": "America/New_York",
+  "timestamp": "2024-01-01T00:00:00Z",
+  "message": "Hello from Jane Smith!",
+  "sentiment": "😊",
+  "msgId": "0001"
+}</textarea>
+            </div>
+
+            <div class="form-grid form-grid-single form-grid-top-gap">
+              <label for="advDeliveryMode">Delivery Mode</label>
+              <div class="delivery-toggle" id="advDeliveryMode">
+                <label class="radio-option-spaced"><input type="radio" name="advDeliveryMode" value="DIRECT" checked /> Direct</label>
+                <label><input type="radio" name="advDeliveryMode" value="PERSISTENT" /> Persistent</label>
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="ports-btn ports-btn-primary" id="publish">Publish Message</button>
+
+          <!-- Step 4 specific error/status banner (hidden by default) -->
+          <div id="pubStatusBanner" class="status-banner status-warn is-hidden section-status" role="status" aria-live="polite">
+            <div class="status-title" id="pubStatusTitle"></div>
+            <div class="status-hint" id="pubStatusHint"></div>
+          </div>
+
+          <div id="actionSuggestionBanner" class="status-banner action-suggestion-banner is-hidden section-status" role="status" aria-live="polite">
+            <div class="status-title" id="actionSuggestionTitle">Try Advanced Mode?</div>
+            <div class="status-hint" id="actionSuggestionHint">How about trying an advanced topic taxonomy and payload now?</div>
+            <div class="suggestion-actions">
+              <button type="button" class="ports-btn ports-btn-primary" id="actionSuggestionYes">Sure!</button>
+              <button type="button" class="ports-btn" id="actionSuggestionNo">No thanks!</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Received Messages (starts closed) -->
+      <details class="card" id="receivedCard">
+        <summary>Received Messages</summary>
+        <div class="card-body">
+          <div id="messages" class="message-stream" aria-live="polite"></div>
+          <div class="below-box-actions">
+            <button type="button" class="ports-btn" id="clearMessages">Clear Received Messages</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- Activity Log (starts closed) -->
+      <details class="card" id="logCard">
+        <summary>Activity Log</summary>
+        <div class="card-body">
+          <textarea id="log" rows="10" readonly></textarea>
+          <div class="below-box-actions">
+            <button type="button" class="ports-btn" id="clearLog">Clear Log</button>
+          </div>
+        </div>
+      </details>
+
+    </main>
+
+    <footer class="app-footer">
+      <a
+        class="github-link"
+        href="https://github.com/itsJamilAhmed/solace-training-sample"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="View source code on GitHub"
+      >
+        <svg class="github-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.34c-2.23.48-2.7-.95-2.7-.95-.36-.91-.89-1.15-.89-1.15-.73-.5.06-.49.06-.49.8.06 1.22.83 1.22.83.72 1.22 1.88.87 2.34.66.07-.51.28-.87.5-1.07-1.78-.2-3.64-.88-3.64-3.93 0-.87.31-1.58.82-2.14-.08-.2-.36-1.01.08-2.11 0 0 .67-.22 2.2.82a7.57 7.57 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.91.08 2.11.51.56.82 1.27.82 2.14 0 3.06-1.86 3.73-3.65 3.93.29.25.54.73.54 1.48v2.19c0 .21.14.46.55.38A8 8 0 0 0 8 0Z"/>
+        </svg>
+        <span>View This App on GitHub</span>
+      </a>
+    </footer>
+  </body>
+</html>
