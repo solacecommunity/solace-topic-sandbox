@@ -392,6 +392,14 @@ textarea:focus {
   color: #333;
 }
 
+.status-hint code {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.95em;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
 .status-info {
   border-color: #b9c7d4;
   background: #f3f7fb;
@@ -550,6 +558,12 @@ textarea:focus {
   max-width: calc(100% + 1ch);
 }
 
+#step4Card .topic-builder-grid input.topic-level-added-highlight {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
+  animation: topic-level-added-pulse 1600ms ease-out 1;
+}
+
 #step4Card .topic-builder-clear-wrap {
   display: flex;
   align-items: center;
@@ -593,7 +607,7 @@ textarea:focus {
     width: 100%;
   }
 
-  #step4Card .topic-builder-grid input[type="text"] {
+#step4Card .topic-builder-grid input[type="text"] {
     width: 100%;
     max-width: 100%;
   }
@@ -619,6 +633,15 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+}
+
+@keyframes topic-level-added-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.44);
+  }
+  100% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
   }
 }
 

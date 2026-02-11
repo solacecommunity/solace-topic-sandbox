@@ -80,7 +80,7 @@
             <label for="password">Password</label>
             <input id="password" type="password" value="password" />
 
-            <label for="displayName">What's your name?</label>
+            <label for="displayName">What's your name? <br/>(Or even secret spy alias! 😉)</label>
             <input id="displayName" type="text" placeholder="Jane Smith" />
           </div>
         </div>
@@ -144,6 +144,14 @@
           <div id="subStatusBanner" class="status-banner status-warn is-hidden section-status" role="status" aria-live="polite">
             <div class="status-title" id="subStatusTitle"></div>
             <div class="status-hint" id="subStatusHint"></div>
+          </div>
+
+          <div id="subGuidanceBanner" class="status-banner action-suggestion-banner guidance-banner section-status is-hidden" role="status" aria-live="polite">
+            <div class="status-title" id="subGuidanceTitle"></div>
+            <div class="status-hint" id="subGuidanceHint"></div>
+            <div class="suggestion-actions">
+              <button type="button" class="ports-btn ports-btn-primary" id="subGuidanceOk">OK, got it</button>
+            </div>
           </div>
         </div>
       </details>
@@ -284,6 +292,7 @@
     <footer class="app-footer">
       <a
         class="github-link"
+        href="https://github.com/itsJamilAhmed/solace-training-sample"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="View source code on GitHub"

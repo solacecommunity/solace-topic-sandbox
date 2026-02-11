@@ -17,6 +17,11 @@
     messageRowCount: 0
   };
 
+  pubsub.subGuidance = {
+    state: 'pending',   // pending|done
+    step: -1
+  };
+
   pubsub.suggestionMachine = {
     basicPublishCount: 0,
     advancedPublishCount: 0,
@@ -87,6 +92,13 @@
       clearMessagesBtn.addEventListener('click', pubsub.clearMessages);
     }
 
+    var subGuidanceOkBtn = document.getElementById('subGuidanceOk');
+    if (subGuidanceOkBtn) {
+      subGuidanceOkBtn.addEventListener('click', function () {
+        pubsub.advanceSubGuidanceFlow();
+      });
+    }
+
     var sugYesBtn = document.getElementById('actionSuggestionYes');
     if (sugYesBtn) {
       sugYesBtn.addEventListener('click', function () {
@@ -145,6 +157,7 @@
     pubsub.clearSubStatus();
     pubsub.clearPubStatus();
     pubsub.hideActionSuggestionBanner();
+    pubsub.maybeShowSubGuidance();
     pubsub.log('Ready. Enter broker details, then Connect.');
   };
 
@@ -410,6 +423,85 @@
     }
   };
 
+  pubsub.showSubGuidanceBanner = function (stepIndex) {
+    var banner = document.getElementById('subGuidanceBanner');
+    var titleEl = document.getElementById('subGuidanceTitle');
+    var hintEl = document.getElementById('subGuidanceHint');
+    var btn = document.getElementById('subGuidanceOk');
+    var banners = [
+      {
+        title: 'Specifying a subscription pattern - single level wildcard',
+        hint: 'Topic subscriptions are literal strings to match (such as <code>workshop/message</code>), or a pattern with a wildcard character of <code>*</code> or <code>&gt;</code> in it. The pattern <code>workshop/*</code> will match messages published to a topic starting with <code>workshop/</code> followed by any other string. e.g. <code>workshop/message</code> that will be used by default in the publish section below.'
+      },
+      {
+        title: 'Specifying a subscription pattern - multiple level wildcard',
+        hint: 'When the topic for a message has multiple levels, (e.g. <code>workshop/dev/message</code>), then each level needs to be wildcarded if using <code>*</code>, e.g. <code>workshop/*/*</code> or multiple levels at once if <code>&gt;</code> is used at the end like so: <code>workshop/&gt;</code>.'
+      }
+    ];
+
+    if (!banner || !titleEl || !hintEl || !btn) {
+      return;
+    }
+    if (stepIndex < 0 || stepIndex >= banners.length) {
+      pubsub.hideSubGuidanceBanner(true);
+      return;
+    }
+
+    pubsub.subGuidance.step = stepIndex;
+    titleEl.textContent = banners[stepIndex].title;
+    pubsub.setHintContent(hintEl, banners[stepIndex].hint, true);
+    btn.textContent = 'OK, got it';
+    banner.classList.remove('is-hidden');
+  };
+
+  pubsub.hideSubGuidanceBanner = function (markDone) {
+    var banner = document.getElementById('subGuidanceBanner');
+    if (!banner) {
+      return;
+    }
+    if (markDone) {
+      pubsub.subGuidance.state = 'done';
+    }
+    pubsub.subGuidance.step = -1;
+    banner.classList.add('is-hidden');
+  };
+
+  pubsub.advanceSubGuidanceFlow = function () {
+    if (pubsub.subGuidance.state !== 'pending') {
+      pubsub.hideSubGuidanceBanner(true);
+      return;
+    }
+    if (pubsub.subGuidance.step === 0) {
+      pubsub.showSubGuidanceBanner(1);
+      return;
+    }
+    if (pubsub.subGuidance.step === 1) {
+      pubsub.hideSubGuidanceBanner(true);
+    }
+  };
+
+  pubsub.maybeShowSubGuidance = function () {
+    if (pubsub.subGuidance.state !== 'pending') {
+      return;
+    }
+    if (Object.keys(pubsub.subscriptions).length > 0) {
+      pubsub.hideSubGuidanceBanner(true);
+      return;
+    }
+    pubsub.showSubGuidanceBanner(0);
+  };
+
+  pubsub.setHintContent = function (el, hint, hintIsHtml) {
+    if (!el) {
+      return;
+    }
+    if (hintIsHtml) {
+      el.innerHTML = hint || '';
+    } else {
+      el.textContent = hint || '';
+    }
+  };
+
   // Step 4 banner
   pubsub.setPubStatus = function (level, title, hint) {
     var banner = document.getElementById('pubStatusBanner');
@@ -428,7 +520,7 @@
     );
 
     titleEl.textContent = title || '';
-    hintEl.textContent = hint || '';
+    pubsub.setHintContent(hintEl, hint, false);
     banner.classList.remove('is-hidden');
   };
 
@@ -442,11 +534,13 @@
     var yesLabel = (options && options.yesLabel) ? options.yesLabel : 'Sure!';
     var noLabel = (options && options.noLabel) ? options.noLabel : 'No thanks!';
     var isGuidance = !!(options && options.guidance);
+    var scrollDelayMs = (options && typeof options.scrollDelayMs === 'number') ? options.scrollDelayMs : 40;
+    var scrollBlock = (options && options.scrollBlock) ? options.scrollBlock : 'nearest';
     if (!banner) {
       return;
     }
     if (titleEl) { titleEl.textContent = title || ''; }
-    if (hintEl) { hintEl.textContent = hint || ''; }
+    pubsub.setHintContent(hintEl, hint, !!(options && options.hintIsHtml));
     banner.classList.toggle('guidance-banner', isGuidance);
     if (yesBtn) { yesBtn.textContent = yesLabel; }
     if (noBtn) {
@@ -460,7 +554,7 @@
     pubsub.openDetails('step4Card');
     setTimeout(function () {
       try {
-        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        banner.scrollIntoView({ behavior: 'smooth', block: scrollBlock });
       } catch (e) {
         banner.scrollIntoView();
       }
@@ -469,7 +563,7 @@
           yesBtn.focus();
         } catch (e2) { /* ignore */ }
       }
-    }, 40);
+    }, scrollDelayMs);
   };
 
   pubsub.hideActionSuggestionBanner = function () {
@@ -498,7 +592,7 @@
     var banners = [
       {
         title: 'Position of new property',
-        hint: 'Topic taxonomy best practice is to go from broad to finite, as you scan the property levels from left to right. As msgId is more concrete than sentiment, the new property will be added as a level before it.'
+        hint: 'Topic taxonomy best practice is to go from broad to finite, as you scan the property levels from left to right. As <code>msgId</code> is more concrete than <code>sentiment</code>, the new property will be added as a level before it.'
       },
       {
         title: 'Impact of new taxonomy',
@@ -506,7 +600,7 @@
       },
       {
         title: 'Updating existing subscriptions',
-        hint: 'Care should be taken to update existing topic subscription interest to reflect the new taxonomy. This example underscores the attention that should be given to topic taxonomy in the design stage. Another idea is to introduce a level to represent the version of the taxonomy (e.g. /v1/) so changes can be better handled.'
+        hint: 'Care should be taken to update existing topic subscription interest to reflect the new taxonomy. This example underscores the attention that should be given to topic taxonomy in the design stage. Another idea is to introduce a level to represent the <i>version</i> of the taxonomy (e.g. <code>/v1/</code>) so breaking changes can be better handled.'
       }
     ];
 
@@ -520,15 +614,24 @@
       'topic_taxonomy_info',
       banners[stepIndex].title,
       banners[stepIndex].hint,
-      { yesLabel: 'OK, got it', showNo: false, guidance: true }
+      {
+        yesLabel: 'OK, got it',
+        showNo: false,
+        guidance: true,
+        hintIsHtml: true,
+        scrollDelayMs: stepIndex === 1 ? 460 : 40,
+        scrollBlock: stepIndex === 1 ? 'end' : 'nearest'
+      }
     );
   };
 
   pubsub.advanceTopicTaxonomyInfoFlow = function () {
     var step = pubsub.suggestionMachine.taxonomyInfoStep;
     if (step === 0) {
-      pubsub.enableSentimentPropertyLevel();
-      pubsub.showTopicTaxonomyInfoBanner(1);
+      var addedLevelInput = pubsub.enableSentimentPropertyLevel();
+      pubsub.revealAddedTopicLevelAndReturnToBanner(addedLevelInput, function () {
+        pubsub.showTopicTaxonomyInfoBanner(1);
+      });
       return;
     }
     if (step === 1) {
@@ -538,6 +641,48 @@
     if (step === 2) {
       pubsub.hideActionSuggestionBanner();
     }
+  };
+
+  pubsub.revealAddedTopicLevelAndReturnToBanner = function (inputEl, onDone) {
+    if (!inputEl) {
+      if (typeof onDone === 'function') {
+        onDone();
+      }
+      return;
+    }
+
+    var viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+    var rect = inputEl.getBoundingClientRect();
+    var offScreen = (rect.top < 0 || rect.bottom > viewportH);
+
+    if (offScreen) {
+      try {
+        inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {
+        inputEl.scrollIntoView();
+      }
+    }
+
+    setTimeout(function () {
+      try {
+        inputEl.focus({ preventScroll: true });
+      } catch (e2) {
+        try {
+          inputEl.focus();
+        } catch (e3) { /* ignore */ }
+      }
+      inputEl.classList.remove('topic-level-added-highlight');
+      inputEl.classList.add('topic-level-added-highlight');
+    }, offScreen ? 420 : 120);
+
+    setTimeout(function () {
+      inputEl.classList.remove('topic-level-added-highlight');
+      setTimeout(function () {
+        if (typeof onDone === 'function') {
+          onDone();
+        }
+      }, 220);
+    }, offScreen ? 2850 : 2400);
   };
 
   pubsub.checkTopicTaxonomySuggestion = function () {
@@ -757,16 +902,18 @@
 
   pubsub.enableSentimentPropertyLevel = function () {
     var existing = document.getElementById('tbProp4');
+    var sentimentField = document.getElementById('tbProp3');
     if (existing) {
       pubsub.syncPayloadLinkedTopicProperties();
-      return;
+      pubsub.generateTopicFromBuilder(false);
+      return sentimentField || existing;
     }
 
     var grid = document.querySelector('#advancedOptions .topic-builder-grid');
     var prop3El = document.getElementById('tbProp3');
     var clearWrap = grid ? grid.querySelector('.topic-builder-clear-wrap') : null;
     if (!grid || !clearWrap || !prop3El) {
-      return;
+      return null;
     }
 
     var wrap = document.createElement('div');
@@ -790,6 +937,7 @@
     pubsub.suggestionMachine.taxonomyState = 'done';
     pubsub.syncPayloadLinkedTopicProperties();
     pubsub.generateTopicFromBuilder(false);
+    return document.getElementById('tbProp3') || input;
   };
 
   pubsub.generateTopicFromBuilder = function (setToPubTopic) {
@@ -1543,6 +1691,7 @@
         delete entry.lastError;
         pubsub.log('Subscribed: ' + pattern);
         pubsub.clearSubStatus();
+        pubsub.hideSubGuidanceBanner(true);
       } else if (entry.state === 'pending_remove') {
         entry.state = 'inactive';
         delete entry.lastError;
