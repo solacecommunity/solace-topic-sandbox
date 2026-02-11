@@ -1009,12 +1009,16 @@
 
     // Generate suggested patterns
     var suggestions = [];
-    if (domain) {
-      suggestions.push(domain + '/>');
+    if (domain && noun && msgIdProp) {
+      if (hasProp4) {
+        suggestions.push(domain + '/' + noun + '/*/*/*/*/' + msgIdProp);
+      } else {
+        suggestions.push(domain + '/' + noun + '/*/*/*/' + msgIdProp);
+      }
     }
     if (domain && noun && prop1) {
       if (hasProp4) {
-        suggestions.push(domain + '/' + noun + '/*/' + prop1 + '/*/*/*/*');
+        suggestions.push(domain + '/' + noun + '/*/' + prop1 + '/*/*/*');
       } else {
         suggestions.push(domain + '/' + noun + '/*/' + prop1 + '/*/*');
       }
@@ -1022,12 +1026,8 @@
     if (domain && noun && verb) {
       suggestions.push(domain + '/' + noun + '/' + verb + '/>');
     }
-    if (domain && noun && msgIdProp) {
-      if (hasProp4) {
-        suggestions.push(domain + '/' + noun + '/*/*/*/*/' + msgIdProp);
-      } else {
-        suggestions.push(domain + '/' + noun + '/*/*/*/' + msgIdProp);
-      }
+    if (domain) {
+      suggestions.push(domain + '/>');
     }
 
     // Render pills

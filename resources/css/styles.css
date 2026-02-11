@@ -645,7 +645,7 @@ textarea:focus {
 
 #step4Card #topicBuilderSection {
   overflow: hidden;
-  max-height: 420px;
+  max-height: 900px;
   opacity: 1;
   background: #f4f9ff;
   border: 1px solid #d7e6f5;
@@ -658,6 +658,12 @@ textarea:focus {
 #step4Card #topicBuilderSection.is-collapsed {
   max-height: 0;
   opacity: 0;
+}
+
+@media (max-width: 520px) {
+  #step4Card #topicBuilderSection {
+    max-height: 1600px;
+  }
 }
 
 #step4Card #advancedOptions > #topicBuilderSection.is-collapsed {
