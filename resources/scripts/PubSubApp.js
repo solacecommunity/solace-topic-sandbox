@@ -24,7 +24,8 @@
     advancedTried: false,
     tryAdvancedState: 'pending',      // pending|suggested|dismissed|done
     taxonomyState: 'pending',         // pending|suggested|dismissed|done
-    activeSuggestion: ''              // try_advanced|topic_taxonomy|''
+    activeSuggestion: '',             // try_advanced|topic_taxonomy|topic_taxonomy_info|''
+    taxonomyInfoStep: -1
   };
 
   pubsub.anim = {
@@ -431,16 +432,27 @@
     banner.classList.remove('is-hidden');
   };
 
-  pubsub.showActionSuggestionBanner = function (suggestionId, title, hint) {
+  pubsub.showActionSuggestionBanner = function (suggestionId, title, hint, options) {
     var banner = document.getElementById('actionSuggestionBanner');
     var titleEl = document.getElementById('actionSuggestionTitle');
     var hintEl = document.getElementById('actionSuggestionHint');
     var yesBtn = document.getElementById('actionSuggestionYes');
+    var noBtn = document.getElementById('actionSuggestionNo');
+    var showNoBtn = !options || options.showNo !== false;
+    var yesLabel = (options && options.yesLabel) ? options.yesLabel : 'Sure!';
+    var noLabel = (options && options.noLabel) ? options.noLabel : 'No thanks!';
+    var isGuidance = !!(options && options.guidance);
     if (!banner) {
       return;
     }
     if (titleEl) { titleEl.textContent = title || ''; }
     if (hintEl) { hintEl.textContent = hint || ''; }
+    banner.classList.toggle('guidance-banner', isGuidance);
+    if (yesBtn) { yesBtn.textContent = yesLabel; }
+    if (noBtn) {
+      noBtn.textContent = noLabel;
+      noBtn.style.display = showNoBtn ? '' : 'none';
+    }
     pubsub.suggestionMachine.activeSuggestion = suggestionId || '';
     banner.classList.remove('is-hidden');
 
@@ -462,12 +474,69 @@
 
   pubsub.hideActionSuggestionBanner = function () {
     var banner = document.getElementById('actionSuggestionBanner');
+    var yesBtn = document.getElementById('actionSuggestionYes');
+    var noBtn = document.getElementById('actionSuggestionNo');
     if (!banner) {
       return;
     }
     pubsub.suggestionMachine.activeSuggestion = '';
+    pubsub.suggestionMachine.taxonomyInfoStep = -1;
+    banner.classList.remove('guidance-banner');
+    if (yesBtn) {
+      yesBtn.textContent = 'Sure!';
+    }
+    if (noBtn) {
+      noBtn.textContent = 'No thanks!';
+      noBtn.style.display = '';
+    }
     if (!banner.classList.contains('is-hidden')) {
       banner.classList.add('is-hidden');
+    }
+  };
+
+  pubsub.showTopicTaxonomyInfoBanner = function (stepIndex) {
+    var banners = [
+      {
+        title: 'Position of new property',
+        hint: 'Topic taxonomy best practice is to go from broad to finite, as you scan the property levels from left to right. As msgId is more concrete than sentiment, the new property will be added as a level before it.'
+      },
+      {
+        title: 'Impact of new taxonomy',
+        hint: 'With the addition of this new level, applications that were using the existing taxonomy will be misaligned now. They were expecting a total of 6 levels before, now it is 7.'
+      },
+      {
+        title: 'Updating existing subscriptions',
+        hint: 'Care should be taken to update existing topic subscription interest to reflect the new taxonomy. This example underscores the attention that should be given to topic taxonomy in the design stage. Another idea is to introduce a level to represent the version of the taxonomy (e.g. /v1/) so changes can be better handled.'
+      }
+    ];
+
+    if (stepIndex < 0 || stepIndex >= banners.length) {
+      pubsub.hideActionSuggestionBanner();
+      return;
+    }
+
+    pubsub.suggestionMachine.taxonomyInfoStep = stepIndex;
+    pubsub.showActionSuggestionBanner(
+      'topic_taxonomy_info',
+      banners[stepIndex].title,
+      banners[stepIndex].hint,
+      { yesLabel: 'OK, got it', showNo: false, guidance: true }
+    );
+  };
+
+  pubsub.advanceTopicTaxonomyInfoFlow = function () {
+    var step = pubsub.suggestionMachine.taxonomyInfoStep;
+    if (step === 0) {
+      pubsub.enableSentimentPropertyLevel();
+      pubsub.showTopicTaxonomyInfoBanner(1);
+      return;
+    }
+    if (step === 1) {
+      pubsub.showTopicTaxonomyInfoBanner(2);
+      return;
+    }
+    if (step === 2) {
+      pubsub.hideActionSuggestionBanner();
     }
   };
 
@@ -484,8 +553,8 @@
       m.taxonomyState = 'suggested';
       pubsub.showActionSuggestionBanner(
         'topic_taxonomy',
-        'Topic Taxonomy Change',
-        'Include message sentiment as a new property level to the topic taxonomy?'
+        'Enhancing the Topic Taxonomy',
+        'Adding elements from the payload into the topic taxonomy allows for more fine-grained filtering and expression of interest by subscribers. Want to try adding message sentiment as a new property level?'
       );
     }
   };
@@ -541,6 +610,10 @@
       if (!active) {
         return;
       }
+      if (active === 'topic_taxonomy_info') {
+        pubsub.advanceTopicTaxonomyInfoFlow();
+        return;
+      }
       pubsub.hideActionSuggestionBanner();
       if (active === 'try_advanced') {
         m.tryAdvancedState = 'done';
@@ -551,7 +624,7 @@
         }
       } else if (active === 'topic_taxonomy') {
         m.taxonomyState = 'done';
-        pubsub.enableSentimentPropertyLevel();
+        pubsub.showTopicTaxonomyInfoBanner(0);
       }
       return;
     }
@@ -565,6 +638,8 @@
         m.tryAdvancedState = 'dismissed';
       } else if (activeSuggestion === 'topic_taxonomy') {
         m.taxonomyState = 'dismissed';
+      } else if (activeSuggestion === 'topic_taxonomy_info') {
+        m.taxonomyInfoStep = -1;
       }
       pubsub.hideActionSuggestionBanner();
     }

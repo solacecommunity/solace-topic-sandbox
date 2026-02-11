@@ -446,6 +446,28 @@ textarea:focus {
   background: #6037ad;
 }
 
+.action-suggestion-banner.guidance-banner {
+  border-color: #facc15;
+  background: #fffbeb;
+}
+
+.action-suggestion-banner.guidance-banner .status-title {
+  color: #854d0e;
+}
+
+.action-suggestion-banner.guidance-banner .status-hint {
+  color: #713f12;
+}
+
+.action-suggestion-banner.guidance-banner .suggestion-actions .ports-btn-primary {
+  background: #ca8a04;
+  border-color: #ca8a04;
+}
+
+.action-suggestion-banner.guidance-banner .suggestion-actions .ports-btn-primary:hover {
+  background: #a16207;
+}
+
 @keyframes suggestion-slide-in-right {
   from {
     opacity: 0;
