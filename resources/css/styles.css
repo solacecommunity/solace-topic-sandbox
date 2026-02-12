@@ -391,6 +391,22 @@ textarea:focus {
   transform: translateY(0);
 }
 
+.pub-sub-suggestions-label.suggestion-attention-highlight {
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+  animation: suggestion-attention-pulse 1800ms ease-out 1;
+}
+
+.sub-input-row.subscription-controls-attention-highlight {
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+  animation: suggestion-attention-pulse 1800ms ease-out 1;
+}
+
 .pub-sub-suggestions-title {
   font-weight: 400;
   font-size: 12px;
@@ -518,6 +534,15 @@ textarea:focus {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes suggestion-attention-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(245, 158, 11, 0);
   }
 }
 

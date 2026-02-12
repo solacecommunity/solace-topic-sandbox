@@ -15,7 +15,18 @@
   pubsub.uiFlags = {
     firstSubExpansionsDone: false,
     messageRowCount: 0,
-    currentDomain: 'workshop'
+    currentDomain: 'workshop',
+    lastPublishStyle: 'basic',
+    coverageBannerIgnored: {
+      basicCoverage: false,
+      firstAdvancedCoverage: false,
+      taxonomyCoverage: false
+    },
+    coverageGapNudges: {
+      basicCoverage: false,
+      firstAdvancedCoverage: false,
+      taxonomyCoverage: false
+    }
   };
 
   pubsub.subGuidance = {
@@ -59,6 +70,15 @@
     document.getElementById('connectToggle').addEventListener('click', pubsub.connectToggle);
     document.getElementById('publish').addEventListener('click', pubsub.publish);
     document.getElementById('addSub').addEventListener('click', pubsub.addSubscriptionFromInput);
+    var subTopicInputEl = document.getElementById('subTopic');
+    if (subTopicInputEl) {
+      subTopicInputEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          pubsub.addSubscriptionFromInput();
+        }
+      });
+    }
 
     // Publish style selector (Basic / Advanced)
     var styleEls = document.getElementsByName('publishStyle');
@@ -93,6 +113,22 @@
     var clearMessagesBtn = document.getElementById('clearMessages');
     if (clearMessagesBtn) {
       clearMessagesBtn.addEventListener('click', pubsub.clearMessages);
+    }
+    var pubStatusIgnoreBtn = document.getElementById('pubStatusIgnore');
+    if (pubStatusIgnoreBtn) {
+      pubStatusIgnoreBtn.addEventListener('click', function () {
+        var scenario = pubStatusIgnoreBtn.getAttribute('data-scenario') || '';
+        pubsub.setCoverageGapIgnored(scenario, true);
+        pubsub.clearPubStatus();
+      });
+    }
+    var pubStatusShowFixBtn = document.getElementById('pubStatusShowFix');
+    if (pubStatusShowFixBtn) {
+      pubStatusShowFixBtn.addEventListener('click', function () {
+        var scenario = pubStatusShowFixBtn.getAttribute('data-scenario') || '';
+        pubsub.clearPubStatus();
+        pubsub.maybeNudgeCoverageGapSuggestions(scenario, true);
+      });
     }
 
     var subGuidanceOkBtn = document.getElementById('subGuidanceOk');
@@ -257,6 +293,17 @@
   pubsub.handleWorkshopContextChange = function () {
     pubsub.toggleHostedWorkshopFields();
     pubsub.applyDomainDefaultsForCurrentContext(true);
+    pubsub.refreshContextualBanners();
+  };
+
+  pubsub.refreshContextualBanners = function () {
+    if (pubsub.subGuidance.state === 'pending' && pubsub.subGuidance.step >= 0) {
+      pubsub.showSubGuidanceBanner(pubsub.subGuidance.step);
+    }
+
+    if (pubsub.suggestionMachine.activeSuggestion === 'advanced_intro_info' && pubsub.suggestionMachine.advancedIntroStep >= 0) {
+      pubsub.showAdvancedIntroBanner(pubsub.suggestionMachine.advancedIntroStep);
+    }
   };
 
   pubsub.toggleHostedWorkshopFields = function () {
@@ -631,7 +678,69 @@
 
     pubsub.setHintContent(titleEl, title, true);
     pubsub.setHintContent(hintEl, hint, true);
+    pubsub.setPubStatusActionsVisible(false, '');
     banner.classList.remove('is-hidden');
+  };
+
+  pubsub.setPubStatusActionsVisible = function (show, scenario) {
+    var actionsEl = document.getElementById('pubStatusActions');
+    var ignoreBtn = document.getElementById('pubStatusIgnore');
+    var showFixBtn = document.getElementById('pubStatusShowFix');
+    if (!actionsEl || !showFixBtn || !ignoreBtn) {
+      return;
+    }
+    actionsEl.classList.toggle('is-hidden', !show);
+    showFixBtn.setAttribute('data-scenario', show ? (scenario || '') : '');
+    ignoreBtn.setAttribute('data-scenario', show ? (scenario || '') : '');
+  };
+
+  pubsub.getCoverageGapFlagKeyForScenario = function (scenario) {
+    if (scenario === 'basic_coverage') {
+      return 'basicCoverage';
+    }
+    if (scenario === 'first_advanced_coverage') {
+      return 'firstAdvancedCoverage';
+    }
+    if (scenario === 'taxonomy_coverage') {
+      return 'taxonomyCoverage';
+    }
+    return '';
+  };
+
+  pubsub.isCoverageGapIgnored = function (scenario) {
+    var key = pubsub.getCoverageGapFlagKeyForScenario(scenario);
+    var ignored = pubsub.uiFlags.coverageBannerIgnored || {};
+    if (!key) {
+      return false;
+    }
+    return !!ignored[key];
+  };
+
+  pubsub.setCoverageGapIgnored = function (scenario, ignoredValue) {
+    var key = pubsub.getCoverageGapFlagKeyForScenario(scenario);
+    if (!key) {
+      return;
+    }
+    pubsub.uiFlags.coverageBannerIgnored[key] = !!ignoredValue;
+  };
+
+  pubsub.getCoverageGapNudgeScenario = function (style) {
+    if (document.getElementById('tbProp4')) {
+      return 'taxonomy_coverage';
+    }
+    if (style === 'advanced') {
+      return 'first_advanced_coverage';
+    }
+    return 'basic_coverage';
+  };
+
+  pubsub.showCoverageGapPubStatus = function (style) {
+    var scenario = pubsub.getCoverageGapNudgeScenario(style);
+    if (pubsub.isCoverageGapIgnored(scenario)) {
+      return;
+    }
+    pubsub.setPubStatus('info', 'Published', 'Hint: The topic of this published message is not currently covered in your subscription interest.');
+    pubsub.setPubStatusActionsVisible(true, scenario);
   };
 
   pubsub.showActionSuggestionBanner = function (suggestionId, title, hint, options) {
@@ -663,10 +772,15 @@
     // Ensure the suggestion is actually visible to the user.
     pubsub.openDetails('step4Card');
     setTimeout(function () {
-      try {
-        banner.scrollIntoView({ behavior: 'smooth', block: scrollBlock });
-      } catch (e) {
-        banner.scrollIntoView();
+      var rect = banner.getBoundingClientRect();
+      var viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+      var isVisible = rect.top >= 0 && rect.bottom <= viewportH;
+      if (!isVisible) {
+        try {
+          banner.scrollIntoView({ behavior: 'smooth', block: scrollBlock });
+        } catch (e) {
+          banner.scrollIntoView();
+        }
       }
       if (yesBtn) {
         try {
@@ -964,6 +1078,7 @@
     var adv = document.getElementById('advancedOptions');
     var sel = document.querySelector('input[name="publishStyle"]:checked');
     if (!adv || !sel) { return; }
+    var prevStyle = pubsub.uiFlags.lastPublishStyle || 'basic';
     var basic = document.getElementById('basicOptions');
     var builderSection = document.getElementById('topicBuilderSection');
     var switchMs = 300;
@@ -972,6 +1087,9 @@
       pubsub.anim.publishStyleTimer = null;
     }
     if (sel.value === 'advanced') {
+      if (prevStyle === 'basic') {
+        pubsub.setCoverageGapIgnored('first_advanced_coverage', false);
+      }
       pubsub.dispatchSuggestionEvent('advanced_mode_selected');
       if (builderSection) {
         builderSection.classList.add('is-collapsed');
@@ -1003,6 +1121,7 @@
       // when switching to basic, hide suggestions
       pubsub.updatePubSubSuggestions();
     }
+    pubsub.uiFlags.lastPublishStyle = sel.value;
   };
 
   pubsub.getTopicBuilderFieldIds = function () {
@@ -1076,6 +1195,8 @@
     if (existing) {
       pubsub.syncPayloadLinkedTopicProperties();
       pubsub.generateTopicFromBuilder(false);
+      pubsub.setCoverageGapIgnored('taxonomy_coverage', false);
+      pubsub.uiFlags.coverageGapNudges.taxonomyCoverage = false;
       return sentimentField || existing;
     }
 
@@ -1105,9 +1226,102 @@
     input.addEventListener('input', function () { pubsub.generateTopicFromBuilder(false); });
 
     pubsub.suggestionMachine.taxonomyState = 'done';
+    pubsub.setCoverageGapIgnored('taxonomy_coverage', false);
+    pubsub.uiFlags.coverageGapNudges.taxonomyCoverage = false;
     pubsub.syncPayloadLinkedTopicProperties();
     pubsub.generateTopicFromBuilder(false);
     return document.getElementById('tbProp3') || input;
+  };
+
+  pubsub.maybeNudgeCoverageGapSuggestions = function (scenario, force) {
+    if (force === undefined) { force = false; }
+    var suggestionsWrap = document.getElementById('pubSubSuggestionsLabel');
+    var suggestionsList = document.getElementById('pubSubSuggestions');
+    var subInputRow = document.querySelector('#step3Card .sub-input-row');
+    var subInput = document.getElementById('subTopic');
+    var addSubBtn = document.getElementById('addSub');
+    var nudges = pubsub.uiFlags.coverageGapNudges || {};
+    var nudgeKey = '';
+    var firstPill;
+    var highlightEl = null;
+    var focusEl = null;
+
+    if (scenario === 'basic_coverage') {
+      nudgeKey = 'basicCoverage';
+      highlightEl = subInputRow;
+      focusEl = subInput;
+    } else if (scenario === 'taxonomy_coverage') {
+      nudgeKey = 'taxonomyCoverage';
+      if (!document.getElementById('tbProp4')) {
+        return;
+      }
+      highlightEl = suggestionsWrap;
+    } else if (scenario === 'first_advanced_coverage') {
+      nudgeKey = 'firstAdvancedCoverage';
+      highlightEl = suggestionsWrap;
+    } else {
+      return;
+    }
+
+    if (!force && nudges[nudgeKey]) {
+      return;
+    }
+
+    if (highlightEl === suggestionsWrap) {
+      if (!suggestionsWrap || !suggestionsList) {
+        return;
+      }
+
+      firstPill = suggestionsList.querySelector('.pub-sub-suggestion');
+      if (!firstPill) {
+        return;
+      }
+      focusEl = firstPill;
+    } else if (!highlightEl) {
+      return;
+    }
+
+    if (!highlightEl) {
+      return;
+    }
+
+    nudges[nudgeKey] = true;
+    pubsub.uiFlags.coverageGapNudges = nudges;
+    pubsub.openDetails('step3Card');
+    try {
+      highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (e1) {
+      highlightEl.scrollIntoView();
+    }
+
+    highlightEl.classList.remove('suggestion-attention-highlight');
+    highlightEl.classList.remove('subscription-controls-attention-highlight');
+    // Force reflow so repeated class application still restarts animation.
+    highlightEl.getBoundingClientRect();
+    if (highlightEl === suggestionsWrap) {
+      highlightEl.classList.add('suggestion-attention-highlight');
+    } else {
+      highlightEl.classList.add('subscription-controls-attention-highlight');
+    }
+
+    try {
+      if (focusEl && focusEl.focus) {
+        focusEl.focus({ preventScroll: true });
+      }
+    } catch (e2) {
+      try {
+        if (focusEl && focusEl.focus) {
+          focusEl.focus();
+        } else if (addSubBtn) {
+          addSubBtn.focus();
+        }
+      } catch (e3) { /* ignore */ }
+    }
+
+    setTimeout(function () {
+      highlightEl.classList.remove('suggestion-attention-highlight');
+      highlightEl.classList.remove('subscription-controls-attention-highlight');
+    }, 2600);
   };
 
   pubsub.generateTopicFromBuilder = function (setToPubTopic) {
@@ -1388,6 +1602,7 @@
 
     titleEl.textContent = '';
     hintEl.textContent = '';
+    pubsub.setPubStatusActionsVisible(false, '');
     if (!banner.classList.contains('is-hidden')) {
       banner.classList.add('is-hidden');
     }
@@ -2059,7 +2274,7 @@
         pubsub.dispatchSuggestionEvent('advanced_publish_success');
       }
       if (!pubsub.hasActiveSubscriptionCoverage(topic)) {
-        pubsub.setPubStatus('info', 'Published', 'Hint: The topic of this published message is not currently covered in your subscription interest.');
+        pubsub.showCoverageGapPubStatus(style);
       } else {
         pubsub.clearPubStatus();
       }
