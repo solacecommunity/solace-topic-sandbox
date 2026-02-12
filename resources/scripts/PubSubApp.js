@@ -26,7 +26,8 @@
       basicCoverage: false,
       firstAdvancedCoverage: false,
       taxonomyCoverage: false
-    }
+    },
+    sentimentSuggestionHighlightActive: false
   };
 
   pubsub.subGuidance = {
@@ -36,7 +37,11 @@
 
   pubsub.suggestionMachine = {
     basicPublishCount: 0,
+    basicFirstPublishTs: 0,
+    basicPromptTimerId: null,
     advancedPublishCount: 0,
+    advancedFirstPublishTs: 0,
+    taxonomyPromptTimerId: null,
     advancedPayloadEdited: false,
     advancedTried: false,
     advancedIntroState: 'pending',    // pending|done
@@ -50,7 +55,8 @@
   pubsub.anim = {
     durationMs: 340,     // Gentle
     easing: 'ease',
-    isAnimating: {}      // map of detailsId -> boolean
+    isAnimating: {},     // map of detailsId -> boolean
+    resizeTimer: null
   };
 
   // subscriptions[pattern] = {
@@ -66,6 +72,15 @@
     factoryProps.profile = solace.SolclientFactoryProfiles.version10_5;
     solace.SolclientFactory.init(factoryProps);
     solace.SolclientFactory.setLogLevel(solace.LogLevel.WARN);
+    pubsub.refreshAnimationSettings();
+    window.addEventListener('resize', function () {
+      if (pubsub.anim.resizeTimer) {
+        clearTimeout(pubsub.anim.resizeTimer);
+      }
+      pubsub.anim.resizeTimer = setTimeout(function () {
+        pubsub.refreshAnimationSettings();
+      }, 120);
+    });
 
     document.getElementById('connectToggle').addEventListener('click', pubsub.connectToggle);
     document.getElementById('publish').addEventListener('click', pubsub.publish);
@@ -380,6 +395,23 @@
     return detailsEl.querySelector('.card-body');
   };
 
+  pubsub.refreshAnimationSettings = function () {
+    var viewportW = window.innerWidth || document.documentElement.clientWidth || 1024;
+    var prefersReducedMotion = false;
+    try {
+      prefersReducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) { /* ignore */ }
+
+    if (prefersReducedMotion) {
+      pubsub.anim.durationMs = 0;
+      pubsub.anim.easing = 'linear';
+      return;
+    }
+
+    pubsub.anim.durationMs = viewportW <= 520 ? 220 : 340;
+    pubsub.anim.easing = 'ease';
+  };
+
   pubsub.setBodyTransition = function (body, enable) {
     if (!body) {
       return;
@@ -403,6 +435,15 @@
     }
     if (id) {
       pubsub.anim.isAnimating[id] = true;
+    }
+
+    if (pubsub.anim.durationMs <= 0) {
+      detailsEl.open = true;
+      body.style.height = 'auto';
+      if (id) {
+        pubsub.anim.isAnimating[id] = false;
+      }
+      return;
     }
 
     // Ensure open so content has layout
@@ -447,6 +488,15 @@
     }
     if (id) {
       pubsub.anim.isAnimating[id] = true;
+    }
+
+    if (pubsub.anim.durationMs <= 0) {
+      detailsEl.open = false;
+      body.style.height = '0px';
+      if (id) {
+        pubsub.anim.isAnimating[id] = false;
+      }
+      return;
     }
 
     pubsub.setBodyTransition(body, false);
@@ -774,8 +824,9 @@
     setTimeout(function () {
       var rect = banner.getBoundingClientRect();
       var viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
-      var isVisible = rect.top >= 0 && rect.bottom <= viewportH;
-      if (!isVisible) {
+      // Scroll only when the banner is fully outside viewport.
+      var isOutsideViewport = rect.bottom < 0 || rect.top > viewportH;
+      if (isOutsideViewport) {
         try {
           banner.scrollIntoView({ behavior: 'smooth', block: scrollBlock });
         } catch (e) {
@@ -784,7 +835,7 @@
       }
       if (yesBtn) {
         try {
-          yesBtn.focus();
+          yesBtn.focus({ preventScroll: true });
         } catch (e2) { /* ignore */ }
       }
     }, scrollDelayMs);
@@ -956,8 +1007,68 @@
     }, offScreen ? 2850 : 2400);
   };
 
+  pubsub.scheduleTryAdvancedFallbackTimer = function () {
+    var m = pubsub.suggestionMachine;
+    if (!m || m.basicPromptTimerId) {
+      return;
+    }
+    m.basicPromptTimerId = setTimeout(function () {
+      m.basicPromptTimerId = null;
+      pubsub.checkTryAdvancedSuggestion();
+    }, 60000);
+  };
+
+  pubsub.scheduleTaxonomyFallbackTimer = function () {
+    var m = pubsub.suggestionMachine;
+    if (!m || m.taxonomyPromptTimerId) {
+      return;
+    }
+    m.taxonomyPromptTimerId = setTimeout(function () {
+      m.taxonomyPromptTimerId = null;
+      pubsub.checkTopicTaxonomySuggestion();
+    }, 60000);
+  };
+
+  pubsub.clearTryAdvancedFallbackTimer = function () {
+    var m = pubsub.suggestionMachine;
+    if (!m || !m.basicPromptTimerId) {
+      return;
+    }
+    clearTimeout(m.basicPromptTimerId);
+    m.basicPromptTimerId = null;
+  };
+
+  pubsub.clearTaxonomyFallbackTimer = function () {
+    var m = pubsub.suggestionMachine;
+    if (!m || !m.taxonomyPromptTimerId) {
+      return;
+    }
+    clearTimeout(m.taxonomyPromptTimerId);
+    m.taxonomyPromptTimerId = null;
+  };
+
+  pubsub.checkTryAdvancedSuggestion = function () {
+    var m = pubsub.suggestionMachine;
+    var oneMinuteElapsed;
+    if (!m || m.advancedTried || m.tryAdvancedState !== 'pending') {
+      return;
+    }
+
+    oneMinuteElapsed = !!(m.basicFirstPublishTs && (Date.now() - m.basicFirstPublishTs >= 60000));
+    if (m.basicPublishCount >= 3 || oneMinuteElapsed) {
+      m.tryAdvancedState = 'suggested';
+      pubsub.clearTryAdvancedFallbackTimer();
+      pubsub.showActionSuggestionBanner(
+        'try_advanced',
+        'Try Advanced Mode?',
+        'How about trying an advanced topic taxonomy and payload now?'
+      );
+    }
+  };
+
   pubsub.checkTopicTaxonomySuggestion = function () {
     var m = pubsub.suggestionMachine;
+    var oneMinuteElapsed;
     if (!m || m.taxonomyState !== 'pending') {
       return;
     }
@@ -966,10 +1077,13 @@
     }
     if (document.getElementById('tbProp4')) {
       m.taxonomyState = 'done';
+      pubsub.clearTaxonomyFallbackTimer();
       return;
     }
-    if (m.advancedPublishCount >= 3 && !m.advancedPayloadEdited) {
+    oneMinuteElapsed = !!(m.advancedFirstPublishTs && (Date.now() - m.advancedFirstPublishTs >= 60000));
+    if (!m.advancedPayloadEdited && (m.advancedPublishCount >= 3 || oneMinuteElapsed)) {
       m.taxonomyState = 'suggested';
+      pubsub.clearTaxonomyFallbackTimer();
       pubsub.showActionSuggestionBanner(
         'topic_taxonomy',
         'Enhancing the Topic Taxonomy',
@@ -988,6 +1102,7 @@
       m.advancedTried = true;
       if (m.tryAdvancedState === 'pending' || m.tryAdvancedState === 'suggested') {
         m.tryAdvancedState = 'done';
+        pubsub.clearTryAdvancedFallbackTimer();
       }
       if (m.activeSuggestion === 'try_advanced') {
         pubsub.hideActionSuggestionBanner();
@@ -1005,25 +1120,27 @@
         return;
       }
       m.basicPublishCount += 1;
-      if (m.basicPublishCount >= 3) {
-        m.tryAdvancedState = 'suggested';
-        pubsub.showActionSuggestionBanner(
-          'try_advanced',
-          'Try Advanced Mode?',
-          'How about trying an advanced topic taxonomy and payload now?'
-        );
+      if (!m.basicFirstPublishTs) {
+        m.basicFirstPublishTs = Date.now();
+        pubsub.scheduleTryAdvancedFallbackTimer();
       }
+      pubsub.checkTryAdvancedSuggestion();
       return;
     }
 
     if (eventName === 'advanced_publish_success') {
       m.advancedPublishCount += 1;
+      if (!m.advancedFirstPublishTs) {
+        m.advancedFirstPublishTs = Date.now();
+        pubsub.scheduleTaxonomyFallbackTimer();
+      }
       pubsub.checkTopicTaxonomySuggestion();
       return;
     }
 
     if (eventName === 'advanced_payload_user_changed') {
       m.advancedPayloadEdited = true;
+      pubsub.clearTaxonomyFallbackTimer();
       pubsub.checkTopicTaxonomySuggestion();
       return;
     }
@@ -1044,6 +1161,7 @@
       pubsub.hideActionSuggestionBanner();
       if (active === 'try_advanced') {
         m.tryAdvancedState = 'done';
+        pubsub.clearTryAdvancedFallbackTimer();
         var advRadio = document.querySelector('input[name="publishStyle"][value="advanced"]');
         if (advRadio) {
           advRadio.checked = true;
@@ -1051,6 +1169,7 @@
         }
       } else if (active === 'topic_taxonomy') {
         m.taxonomyState = 'done';
+        pubsub.clearTaxonomyFallbackTimer();
         pubsub.showTopicTaxonomyInfoBanner(0);
       }
       return;
@@ -1063,10 +1182,12 @@
       }
       if (activeSuggestion === 'try_advanced') {
         m.tryAdvancedState = 'dismissed';
+        pubsub.clearTryAdvancedFallbackTimer();
       } else if (activeSuggestion === 'advanced_intro_info') {
         m.advancedIntroState = 'done';
       } else if (activeSuggestion === 'topic_taxonomy') {
         m.taxonomyState = 'dismissed';
+        pubsub.clearTaxonomyFallbackTimer();
       } else if (activeSuggestion === 'topic_taxonomy_info') {
         m.taxonomyInfoStep = -1;
       }
@@ -1195,8 +1316,10 @@
     if (existing) {
       pubsub.syncPayloadLinkedTopicProperties();
       pubsub.generateTopicFromBuilder(false);
+      pubsub.clearTaxonomyFallbackTimer();
       pubsub.setCoverageGapIgnored('taxonomy_coverage', false);
       pubsub.uiFlags.coverageGapNudges.taxonomyCoverage = false;
+      pubsub.uiFlags.sentimentSuggestionHighlightActive = true;
       return sentimentField || existing;
     }
 
@@ -1226,11 +1349,21 @@
     input.addEventListener('input', function () { pubsub.generateTopicFromBuilder(false); });
 
     pubsub.suggestionMachine.taxonomyState = 'done';
+    pubsub.clearTaxonomyFallbackTimer();
     pubsub.setCoverageGapIgnored('taxonomy_coverage', false);
     pubsub.uiFlags.coverageGapNudges.taxonomyCoverage = false;
+    pubsub.uiFlags.sentimentSuggestionHighlightActive = true;
     pubsub.syncPayloadLinkedTopicProperties();
     pubsub.generateTopicFromBuilder(false);
     return document.getElementById('tbProp3') || input;
+  };
+
+  pubsub.clearSentimentSuggestionHighlight = function () {
+    pubsub.uiFlags.sentimentSuggestionHighlightActive = false;
+    var highlighted = document.querySelector('.pub-sub-suggestion-highlight');
+    if (highlighted) {
+      highlighted.classList.remove('pub-sub-suggestion-highlight');
+    }
   };
 
   pubsub.maybeNudgeCoverageGapSuggestions = function (scenario, force) {
@@ -1525,6 +1658,7 @@
     var prop3 = document.getElementById('tbProp3').value.trim();
     var prop4El = document.getElementById('tbProp4');
     var hasProp4 = !!prop4El;
+    var sentimentProp = hasProp4 ? prop3 : '';
     var msgIdProp = hasProp4 ? (prop4El.value || '').trim() : prop3;
 
     // Check if Advanced mode is active and fields are not empty
@@ -1543,6 +1677,11 @@
 
     // Generate suggested patterns
     var suggestions = [];
+    var sentimentSuggestionPattern = '';
+    if (hasProp4 && domain && sentimentProp) {
+      sentimentSuggestionPattern = domain + '/hello-message/announced/*/*/' + sentimentProp + '/*';
+      suggestions.push(sentimentSuggestionPattern);
+    }
     if (domain && noun && msgIdProp) {
       if (hasProp4) {
         suggestions.push(domain + '/' + noun + '/*/*/*/*/' + msgIdProp);
@@ -1569,6 +1708,9 @@
       var pill = document.createElement('button');
       pill.type = 'button';
       pill.className = 'pub-sub-suggestion';
+      if (pubsub.uiFlags.sentimentSuggestionHighlightActive && sentimentSuggestionPattern && pattern === sentimentSuggestionPattern) {
+        pill.classList.add('pub-sub-suggestion-highlight');
+      }
       pill.textContent = pattern;
       pill.addEventListener('click', function (e) {
         e.preventDefault();
@@ -1578,6 +1720,9 @@
           // Optional: auto-focus the Add Subscription button to encourage action
           var addSubBtn = document.getElementById('addSub');
           if (addSubBtn) { addSubBtn.focus(); }
+        }
+        if (sentimentSuggestionPattern && pattern === sentimentSuggestionPattern) {
+          pubsub.clearSentimentSuggestionHighlight();
         }
       });
       suggestionsEl.appendChild(pill);
@@ -2308,6 +2453,7 @@
     var entry = pubsub.subscriptions[pattern];
     if (!entry) {
       pubsub.subscriptions[pattern] = { state: 'pending_add', msgCount: 0, lastReceivedTs: 0 };
+      pubsub.clearSentimentSuggestionHighlight();
     } else {
       if (entry.state === 'active' || entry.state === 'pending_add' || entry.state === 'pending_remove') {
         pubsub.setSubStatus('warn', 'Duplicate subscription', 'That pattern is already subscribed (or still updating).');

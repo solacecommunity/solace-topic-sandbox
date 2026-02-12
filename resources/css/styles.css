@@ -318,6 +318,12 @@ textarea:focus {
   box-shadow: 0 2px 8px rgba(0, 113, 197, 0.3);
 }
 
+.pub-sub-suggestion.pub-sub-suggestion-highlight {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
+  animation: topic-level-added-pulse 1600ms ease-out 1;
+}
+
 /* Textareas and action rows */
 #log {
   max-width: 1000px;
@@ -639,6 +645,18 @@ textarea:focus {
 
 /* Step 4 specific narrow-screen stacking at 520px */
 @media (max-width: 520px) {
+  .pub-sub-suggestions-label {
+    transition: max-height 180ms ease, opacity 150ms ease, transform 180ms ease;
+  }
+
+  .action-suggestion-banner {
+    animation: suggestion-slide-in-right 260ms ease-out;
+  }
+
+  #step4Card #topicBuilderSection {
+    transition: max-height 220ms ease, opacity 170ms ease;
+  }
+
   /* Stack the style toggle vertically */
   #step4Card .style-toggle {
     display: flex;
