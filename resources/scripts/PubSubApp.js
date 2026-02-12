@@ -1296,6 +1296,22 @@
     return s.trim().replace(/\s+/g, '');
   };
 
+  pubsub.isAclDeniedDetail = function (detail) {
+    var text = String(detail || '');
+    return /acl|access\s*denied|permission\s*denied|not\s*authorized|not\s*allowed|publish\s*denied/i.test(text);
+  };
+
+  pubsub.handlePublishRejected = function (detail) {
+    var msg = detail || 'Message publish was rejected by the broker.';
+    if (pubsub.isAclDeniedDetail(msg)) {
+      pubsub.setPubStatus('error', 'Publish denied by ACL', msg);
+      pubsub.log('Publish rejected (ACL denied): ' + msg);
+      return;
+    }
+    pubsub.setPubStatus('error', 'Publish rejected by broker', msg);
+    pubsub.log('Publish rejected by broker: ' + msg);
+  };
+
   pubsub.statusLabel = function (state) {
     if (state === 'pending_add') { return 'Subscribing...'; }
     if (state === 'active') { return 'Subscribed'; }
@@ -1778,6 +1794,15 @@
       var topic = message.getDestination().getName();
       pubsub.appendMessage(topic, payload);
     });
+
+    // Some publish failures (including ACL denials) can be delivered asynchronously.
+    var rejectedCode = solace.SessionEventCode && solace.SessionEventCode.REJECTED_MESSAGE_ERROR;
+    if (rejectedCode !== undefined && rejectedCode !== null) {
+      pubsub.session.on(rejectedCode, function (e) {
+        var detail = (e && (e.infoStr || e.toString)) ? (e.infoStr || e.toString()) : 'Rejected message error';
+        pubsub.handlePublishRejected(detail);
+      });
+    }
   };
 
   pubsub.markSubscriptionsDisconnected = function () {
@@ -1937,8 +1962,12 @@
       pubsub.log('Published message to: ' + topic);
     } catch (e2) {
       var detail2 = (e2 && e2.message) ? e2.message : e2.toString();
-      pubsub.setPubStatus('error', 'Publish failed', 'Check that you are still connected, then try again.');
-      pubsub.log('Publish failed: ' + detail2);
+      if (pubsub.isAclDeniedDetail(detail2)) {
+        pubsub.handlePublishRejected(detail2);
+      } else {
+        pubsub.setPubStatus('error', 'Publish failed', 'Check that you are still connected, then try again.');
+        pubsub.log('Publish failed: ' + detail2);
+      }
     }
   };
 
