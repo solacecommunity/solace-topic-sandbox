@@ -14,7 +14,8 @@
 
   pubsub.uiFlags = {
     firstSubExpansionsDone: false,
-    messageRowCount: 0
+    messageRowCount: 0,
+    currentDomain: 'workshop'
   };
 
   pubsub.subGuidance = {
@@ -127,6 +128,20 @@
       });
     }
 
+    var hostedWorkshopRadios = document.getElementsByName('isHostedWorkshop');
+    var hwIdx;
+    for (hwIdx = 0; hwIdx < hostedWorkshopRadios.length; hwIdx += 1) {
+      hostedWorkshopRadios[hwIdx].addEventListener('change', function () {
+        pubsub.handleWorkshopContextChange();
+      });
+    }
+    var sandboxIdEl = document.getElementById('sandboxId');
+    if (sandboxIdEl) {
+      sandboxIdEl.addEventListener('change', function () {
+        pubsub.handleWorkshopContextChange();
+      });
+    }
+
     // Delegate actions from the subscription table (Toggle Subscribe / Delete)
     document.getElementById('subsTbody').addEventListener('click', function (e) {
       var target = e.target;
@@ -146,6 +161,7 @@
     pubsub.enableSmoothDetails();
     pubsub.togglePublishStyle();
 
+    pubsub.handleWorkshopContextChange();
     var initialTopicDefaults = pubsub.getTopicBuilderDefaults();
     pubsub.applyTopicBuilderValues(initialTopicDefaults);
     pubsub.syncAdvancedPayloadFromTopicDefaults(initialTopicDefaults);
@@ -174,6 +190,92 @@
     }
     var ph = (nameEl.placeholder || '').trim();
     return ph || 'Jane Smith';
+  };
+
+  pubsub.isHostedWorkshopSelected = function () {
+    var selected = document.querySelector('input[name="isHostedWorkshop"]:checked');
+    return !!(selected && selected.value === 'yes');
+  };
+
+  pubsub.getSelectedSandboxId = function () {
+    var sandboxEl = document.getElementById('sandboxId');
+    var parsed = sandboxEl ? parseInt(String(sandboxEl.value || ''), 10) : NaN;
+    if (isNaN(parsed) || parsed < 1 || parsed > 10) {
+      return 1;
+    }
+    return parsed;
+  };
+
+  pubsub.getDomainForCurrentContext = function () {
+    if (!pubsub.isHostedWorkshopSelected()) {
+      return 'workshop';
+    }
+    return 'workshop-' + pubsub.getSelectedSandboxId();
+  };
+
+  pubsub.getDefaultSubPatternForDomain = function (domain) {
+    return (domain || 'workshop') + '/*';
+  };
+
+  pubsub.getDefaultBasicTopicForDomain = function (domain) {
+    return (domain || 'workshop') + '/message';
+  };
+
+  pubsub.applyDomainDefaultsForCurrentContext = function (force) {
+    var nextDomain = pubsub.getDomainForCurrentContext();
+    var prevDomain = pubsub.uiFlags.currentDomain || 'workshop';
+    var prevSubDefault = pubsub.getDefaultSubPatternForDomain(prevDomain);
+    var nextSubDefault = pubsub.getDefaultSubPatternForDomain(nextDomain);
+    var prevPubDefault = pubsub.getDefaultBasicTopicForDomain(prevDomain);
+    var nextPubDefault = pubsub.getDefaultBasicTopicForDomain(nextDomain);
+    var subTopicEl = document.getElementById('subTopic');
+    var pubTopicEl = document.getElementById('pubTopic');
+    var tbDomainEl = document.getElementById('tbDomain');
+    var shouldRegenerateTopic = false;
+
+    if (subTopicEl && (force || !subTopicEl.value || subTopicEl.value === prevSubDefault)) {
+      subTopicEl.value = nextSubDefault;
+    }
+
+    if (pubTopicEl && (force || !pubTopicEl.value || pubTopicEl.value === prevPubDefault)) {
+      pubTopicEl.value = nextPubDefault;
+    }
+
+    if (tbDomainEl && (force || !tbDomainEl.value || tbDomainEl.value === prevDomain)) {
+      tbDomainEl.value = nextDomain;
+      shouldRegenerateTopic = true;
+    }
+
+    pubsub.uiFlags.currentDomain = nextDomain;
+    if (shouldRegenerateTopic) {
+      pubsub.generateTopicFromBuilder(false);
+    } else {
+      pubsub.updatePubSubSuggestions();
+    }
+  };
+
+  pubsub.handleWorkshopContextChange = function () {
+    pubsub.toggleHostedWorkshopFields();
+    pubsub.applyDomainDefaultsForCurrentContext(true);
+  };
+
+  pubsub.toggleHostedWorkshopFields = function () {
+    var workshopOnlyEls = document.querySelectorAll('.hosted-workshop-only');
+    var show = pubsub.isHostedWorkshopSelected();
+    var i;
+
+    for (i = 0; i < workshopOnlyEls.length; i += 1) {
+      workshopOnlyEls[i].classList.toggle('is-hidden', !show);
+    }
+
+    if (!show) {
+      var nameEl = document.getElementById('displayName');
+      if (nameEl) {
+        nameEl.value = '';
+      }
+      pubsub.syncAdvancedPayloadFromDisplayName();
+      pubsub.syncBasicPayloadFromDisplayName();
+    }
   };
 
   pubsub.getRandomSentiment = function () {
@@ -435,14 +537,15 @@
     var titleEl = document.getElementById('subGuidanceTitle');
     var hintEl = document.getElementById('subGuidanceHint');
     var btn = document.getElementById('subGuidanceOk');
+    var domain = pubsub.getDomainForCurrentContext();
     var banners = [
       {
         title: 'Specifying a subscription pattern - single level wildcard',
-        hint: 'Topic subscriptions are literal strings to match (such as <code>workshop/message</code>), or a pattern with a wildcard character of <code>*</code> or <code>&gt;</code> in it. The pattern <code>workshop/*</code> will match messages published to a topic starting with <code>workshop/</code> followed by any other string. e.g. <code>workshop/message</code> that will be used by default in the publish section below.'
+        hint: 'Topic subscriptions are literal strings to match (such as <code>' + domain + '/message</code>), or a pattern with a wildcard character of <code>*</code> or <code>&gt;</code> in it. The pattern <code>' + domain + '/*</code> will match messages published to a topic starting with <code>' + domain + '/</code> followed by any other string. e.g. <code>' + domain + '/message</code> that will be used by default in the publish section below.'
       },
       {
         title: 'Specifying a subscription pattern - multiple level wildcard',
-        hint: 'When the topic for a message has multiple levels, (e.g. <code>workshop/dev/message</code>), then each level needs to be wildcarded if using <code>*</code>, e.g. <code>workshop/*/*</code> or multiple levels at once if <code>&gt;</code> is used at the end like so: <code>workshop/&gt;</code>.'
+        hint: 'When the topic for a message has multiple levels, (e.g. <code>' + domain + '/dev/message</code>), then each level needs to be wildcarded if using <code>*</code>, e.g. <code>' + domain + '/*/*</code> or multiple levels at once if <code>&gt;</code> is used at the end like so: <code>' + domain + '/&gt;</code>.'
       }
     ];
 
@@ -634,6 +737,7 @@
   };
 
   pubsub.showAdvancedIntroBanner = function (stepIndex) {
+    var domain = pubsub.getDomainForCurrentContext();
     var banners = [
       {
         title: 'Topic Taxonomy Explained',
@@ -641,7 +745,7 @@
       },
       {
         title: 'Current Topic Taxonomy',
-        hint: 'For this \'hello\' message, some elements of the JSON payload are used to be \'properties\' in the topic to enable subscribers to <i>only</i> receive exact messages of interest, when using a suitably constructed subscription pattern. <br/>The taxonomy is as follows: <br/><code>workshop/hello-message/announced/{country}/{language}/{msgId}</code> <br/>with the last 3 levels expected to be dynamic for every message sent.'
+        hint: 'For this \'hello\' message, some elements of the JSON payload are used to be \'properties\' in the topic to enable subscribers to <i>only</i> receive exact messages of interest, when using a suitably constructed subscription pattern. <br/>The taxonomy is as follows: <br/><code>' + domain + '/hello-message/announced/{country}/{language}/{msgId}</code> <br/>with the last 3 levels expected to be dynamic for every message sent.'
       }
     ];
 
@@ -1081,7 +1185,7 @@
     var randomNumber = String(Math.floor(Math.random() * 9999) + 1).padStart(4, '0');
 
     return {
-      tbDomain: 'workshop',
+      tbDomain: pubsub.getDomainForCurrentContext(),
       tbNoun: 'hello-message',
       tbVerb: 'announced',
       tbProp1: countryKebab || 'united-states',
@@ -1981,7 +2085,7 @@
     }
 
     if (!pattern) {
-      pubsub.setSubStatus('warn', 'Invalid pattern', 'Enter a subscription pattern (for example: workshop/*).');
+      pubsub.setSubStatus('warn', 'Invalid pattern', 'Enter a subscription pattern (for example: ' + pubsub.getDefaultSubPatternForDomain(pubsub.getDomainForCurrentContext()) + ').');
       pubsub.log('Cannot subscribe: invalid pattern.');
       return;
     }
@@ -2032,7 +2136,7 @@
     var pattern = pubsub.normalizePattern(raw);
 
     if (!pattern) {
-      pubsub.setSubStatus('warn', 'Missing pattern', 'Enter a subscription pattern (for example: workshop/*).');
+      pubsub.setSubStatus('warn', 'Missing pattern', 'Enter a subscription pattern (for example: ' + pubsub.getDefaultSubPatternForDomain(pubsub.getDomainForCurrentContext()) + ').');
       pubsub.log('Cannot subscribe: please enter a subscription pattern.');
       return;
     }

@@ -79,9 +79,35 @@
 
             <label for="password">Password</label>
             <input id="password" type="password" value="password" />
+          </div>
 
-            <label for="displayName">What's your name? <br/>(Or even secret spy alias! 😉)</label>
-            <input id="displayName" type="text" placeholder="Jane Smith" />
+          <div class="step1-workshop-subsection" id="hostedWorkshopSection">
+            <div class="step1-workshop-title">Workshop Details</div>
+
+            <div class="form-grid form-grid-single">
+              <label>Are you currently in a Solace hosted workshop?</label>
+              <div class="radio-inline-group" role="radiogroup" aria-label="Are you currently in a Solace hosted workshop?">
+                <label class="radio-inline-option"><input type="radio" name="isHostedWorkshop" value="no" checked /> No</label>
+                <label class="radio-inline-option"><input type="radio" name="isHostedWorkshop" value="yes" /> Yes</label>
+              </div>
+
+              <label for="displayName" class="hosted-workshop-only is-hidden">What's your name? <br/>(Or even secret spy alias! 😉)</label>
+              <input id="displayName" class="hosted-workshop-only is-hidden" type="text" placeholder="Jane Smith" />
+
+              <label for="sandboxId" class="hosted-workshop-only is-hidden">Select Sandbox ID</label>
+              <select id="sandboxId" class="hosted-workshop-only is-hidden">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10</option>
+              </select>
+            </div>
           </div>
         </div>
       </details>
@@ -292,7 +318,7 @@
     <footer class="app-footer">
       <a
         class="github-link"
-        href="https://github.com/itsJamilAhmed/solace-training-sample"
+        href="https://github.com/solacecommunity/solace-topic-sandbox"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="View source code on GitHub"
