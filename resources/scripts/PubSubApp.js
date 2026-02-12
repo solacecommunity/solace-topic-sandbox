@@ -176,6 +176,11 @@
     return ph || 'Jane Smith';
   };
 
+  pubsub.getRandomSentiment = function () {
+    var options = ['😊', '😉', '😂', '😎', '🤔', '🤩', '🥳'];
+    return options[Math.floor(Math.random() * options.length)];
+  };
+
   pubsub.syncAdvancedPayloadFromDisplayName = function () {
     var payloadEl = document.getElementById('payloadAdvanced');
     if (!payloadEl) {
@@ -1134,6 +1139,7 @@
     if (defaults.tbProp3) {
       obj.msgId = defaults.tbProp3;
     }
+    obj.sentiment = pubsub.getRandomSentiment();
 
     try {
       obj.timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -1170,6 +1176,7 @@
     if (Object.prototype.hasOwnProperty.call(obj, 'msgId') && defaults.tbProp3) {
       obj.msgId = defaults.tbProp3;
     }
+    obj.sentiment = pubsub.getRandomSentiment();
     if (Object.prototype.hasOwnProperty.call(obj, 'timestamp')) {
       try {
         obj.timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
