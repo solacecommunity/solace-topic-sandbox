@@ -636,6 +636,13 @@ textarea:focus {
   gap: 8px;
 }
 
+#step4Card .topic-taxonomy-hints {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #4b5563;
+}
+
 #step4Card .style-toggle input[type="radio"],
 #step4Card .delivery-toggle input[type="radio"] {
   width: 14px;

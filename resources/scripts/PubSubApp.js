@@ -42,13 +42,17 @@
     advancedPublishCount: 0,
     advancedFirstPublishTs: 0,
     taxonomyPromptTimerId: null,
+    versionPromptTimerId: null,
+    versionPublishCount: 0,
+    versionFirstPublishTs: 0,
     advancedPayloadEdited: false,
     advancedTried: false,
     advancedIntroState: 'pending',    // pending|done
     advancedIntroStep: -1,
     tryAdvancedState: 'pending',      // pending|suggested|dismissed|done
     taxonomyState: 'pending',         // pending|suggested|dismissed|done
-    activeSuggestion: '',             // try_advanced|advanced_intro_info|topic_taxonomy|topic_taxonomy_info|''
+    versionState: 'pending',          // pending|suggested|dismissed|done
+    activeSuggestion: '',             // try_advanced|advanced_intro_info|topic_taxonomy|topic_taxonomy_info|topic_taxonomy_version|''
     taxonomyInfoStep: -1
   };
 
@@ -1029,6 +1033,24 @@
     }, 60000);
   };
 
+  pubsub.scheduleVersionFallbackTimer = function () {
+    var m = pubsub.suggestionMachine;
+    if (!m || m.versionPromptTimerId || m.versionState !== 'pending') {
+      return;
+    }
+    if (m.taxonomyState !== 'done' || !document.getElementById('tbProp4')) {
+      return;
+    }
+    if (document.getElementById('tbVersion')) {
+      m.versionState = 'done';
+      return;
+    }
+    m.versionPromptTimerId = setTimeout(function () {
+      m.versionPromptTimerId = null;
+      pubsub.checkTopicVersionSuggestion();
+    }, 60000);
+  };
+
   pubsub.clearTryAdvancedFallbackTimer = function () {
     var m = pubsub.suggestionMachine;
     if (!m || !m.basicPromptTimerId) {
@@ -1045,6 +1067,15 @@
     }
     clearTimeout(m.taxonomyPromptTimerId);
     m.taxonomyPromptTimerId = null;
+  };
+
+  pubsub.clearVersionFallbackTimer = function () {
+    var m = pubsub.suggestionMachine;
+    if (!m || !m.versionPromptTimerId) {
+      return;
+    }
+    clearTimeout(m.versionPromptTimerId);
+    m.versionPromptTimerId = null;
   };
 
   pubsub.checkTryAdvancedSuggestion = function () {
@@ -1092,6 +1123,35 @@
     }
   };
 
+  pubsub.checkTopicVersionSuggestion = function () {
+    var m = pubsub.suggestionMachine;
+    var oneMinuteElapsed;
+    if (!m || m.versionState !== 'pending') {
+      return;
+    }
+    if (m.taxonomyState !== 'done' || !document.getElementById('tbProp4')) {
+      return;
+    }
+    if (document.getElementById('tbVersion')) {
+      m.versionState = 'done';
+      pubsub.clearVersionFallbackTimer();
+      return;
+    }
+    oneMinuteElapsed = !!(m.versionFirstPublishTs && (Date.now() - m.versionFirstPublishTs >= 60000));
+    if (m.versionPublishCount >= 3 || oneMinuteElapsed) {
+      m.versionState = 'suggested';
+      pubsub.clearVersionFallbackTimer();
+      pubsub.showActionSuggestionBanner(
+        'topic_taxonomy_version',
+        'Add the event version to the taxonomy?',
+        'Add a <code>Version</code> level (for example <code>v1</code>) before the property levels so future taxonomy changes are easier to manage.',
+        {
+          hintIsHtml: true
+        }
+      );
+    }
+  };
+
   pubsub.dispatchSuggestionEvent = function (eventName) {
     var m = pubsub.suggestionMachine;
     if (!m) {
@@ -1135,6 +1195,14 @@
         pubsub.scheduleTaxonomyFallbackTimer();
       }
       pubsub.checkTopicTaxonomySuggestion();
+      if (m.taxonomyState === 'done' && m.versionState === 'pending' && !document.getElementById('tbVersion')) {
+        m.versionPublishCount += 1;
+        if (!m.versionFirstPublishTs) {
+          m.versionFirstPublishTs = Date.now();
+          pubsub.scheduleVersionFallbackTimer();
+        }
+        pubsub.checkTopicVersionSuggestion();
+      }
       return;
     }
 
@@ -1171,6 +1239,11 @@
         m.taxonomyState = 'done';
         pubsub.clearTaxonomyFallbackTimer();
         pubsub.showTopicTaxonomyInfoBanner(0);
+      } else if (active === 'topic_taxonomy_version') {
+        m.versionState = 'done';
+        pubsub.clearVersionFallbackTimer();
+        pubsub.hideActionSuggestionBanner();
+        pubsub.revealAddedTopicLevelAndReturnToBanner(pubsub.enableVersionTaxonomyLevel());
       }
       return;
     }
@@ -1190,6 +1263,9 @@
         pubsub.clearTaxonomyFallbackTimer();
       } else if (activeSuggestion === 'topic_taxonomy_info') {
         m.taxonomyInfoStep = -1;
+      } else if (activeSuggestion === 'topic_taxonomy_version') {
+        m.versionState = 'dismissed';
+        pubsub.clearVersionFallbackTimer();
       }
       pubsub.hideActionSuggestionBanner();
     }
@@ -1247,11 +1323,48 @@
 
   pubsub.getTopicBuilderFieldIds = function () {
     var ids = ['tbDomain', 'tbNoun', 'tbVerb', 'tbProp1', 'tbProp2'];
+    if (document.getElementById('tbVersion')) {
+      ids = ['tbDomain', 'tbNoun', 'tbVerb', 'tbVersion', 'tbProp1', 'tbProp2'];
+    }
     ids.push('tbProp3');
     if (document.getElementById('tbProp4')) {
       ids.push('tbProp4');
     }
     return ids;
+  };
+
+  pubsub.renderTopicTaxonomyHints = function () {
+    var hintsEl = document.getElementById('topicTaxonomyHints');
+    var domainEl = document.getElementById('tbDomain');
+    var nounEl = document.getElementById('tbNoun');
+    var verbEl = document.getElementById('tbVerb');
+    if (!hintsEl) {
+      return;
+    }
+    var labels = [];
+    labels.push((domainEl && domainEl.value && domainEl.value.trim()) ? domainEl.value.trim() : '{app-domain}');
+    labels.push((nounEl && nounEl.value && nounEl.value.trim()) ? nounEl.value.trim() : '{data-object}');
+    labels.push((verbEl && verbEl.value && verbEl.value.trim()) ? verbEl.value.trim() : '{what-happened}');
+    if (document.getElementById('tbVersion')) {
+      labels.push('{version}');
+    }
+    labels.push('{country}');
+    labels.push('{language}');
+    if (document.getElementById('tbProp4')) {
+      labels.push('{sentiment}');
+      labels.push('{msgId}');
+    } else {
+      labels.push('{msgId}');
+    }
+    hintsEl.textContent = 'Current topic taxonomy: ' + labels.join(' / ');
+  };
+
+  pubsub.clearTopicTaxonomyHints = function () {
+    var hintsEl = document.getElementById('topicTaxonomyHints');
+    if (!hintsEl) {
+      return;
+    }
+    hintsEl.textContent = '';
   };
 
   pubsub.normalizeTopicToken = function (value) {
@@ -1308,6 +1421,47 @@
       }
       pubsub.generateTopicFromBuilder(false);
     } catch (e) { /* ignore */ }
+  };
+
+  pubsub.enableVersionTaxonomyLevel = function () {
+    var existing = document.getElementById('tbVersion');
+    if (existing) {
+      if (!existing.value || !existing.value.trim()) {
+        existing.value = 'v1';
+      }
+      pubsub.suggestionMachine.versionState = 'done';
+      pubsub.clearVersionFallbackTimer();
+      pubsub.generateTopicFromBuilder(false);
+      return existing;
+    }
+
+    var grid = document.querySelector('#advancedOptions .topic-builder-grid');
+    var prop1El = document.getElementById('tbProp1');
+    if (!grid || !prop1El || !prop1El.parentNode) {
+      return null;
+    }
+
+    var wrap = document.createElement('div');
+    var label = document.createElement('label');
+    var input = document.createElement('input');
+
+    label.setAttribute('for', 'tbVersion');
+    label.textContent = 'Version';
+    input.id = 'tbVersion';
+    input.type = 'text';
+    input.placeholder = '{event-version}';
+    input.value = 'v1';
+
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    grid.insertBefore(wrap, prop1El.parentNode);
+
+    input.addEventListener('input', function () { pubsub.generateTopicFromBuilder(false); });
+
+    pubsub.suggestionMachine.versionState = 'done';
+    pubsub.clearVersionFallbackTimer();
+    pubsub.generateTopicFromBuilder(false);
+    return input;
   };
 
   pubsub.enableSentimentPropertyLevel = function () {
@@ -1420,41 +1574,53 @@
 
     nudges[nudgeKey] = true;
     pubsub.uiFlags.coverageGapNudges = nudges;
+    var step3Card = document.getElementById('step3Card');
+    var wasClosed = !!(step3Card && !step3Card.open);
+
     pubsub.openDetails('step3Card');
-    try {
-      highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } catch (e1) {
-      highlightEl.scrollIntoView();
-    }
 
-    highlightEl.classList.remove('suggestion-attention-highlight');
-    highlightEl.classList.remove('subscription-controls-attention-highlight');
-    // Force reflow so repeated class application still restarts animation.
-    highlightEl.getBoundingClientRect();
-    if (highlightEl === suggestionsWrap) {
-      highlightEl.classList.add('suggestion-attention-highlight');
-    } else {
-      highlightEl.classList.add('subscription-controls-attention-highlight');
-    }
-
-    try {
-      if (focusEl && focusEl.focus) {
-        focusEl.focus({ preventScroll: true });
-      }
-    } catch (e2) {
+    var runNudge = function () {
       try {
-        if (focusEl && focusEl.focus) {
-          focusEl.focus();
-        } else if (addSubBtn) {
-          addSubBtn.focus();
-        }
-      } catch (e3) { /* ignore */ }
-    }
+        highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e1) {
+        highlightEl.scrollIntoView();
+      }
 
-    setTimeout(function () {
       highlightEl.classList.remove('suggestion-attention-highlight');
       highlightEl.classList.remove('subscription-controls-attention-highlight');
-    }, 2600);
+      // Force reflow so repeated class application still restarts animation.
+      highlightEl.getBoundingClientRect();
+      if (highlightEl === suggestionsWrap) {
+        highlightEl.classList.add('suggestion-attention-highlight');
+      } else {
+        highlightEl.classList.add('subscription-controls-attention-highlight');
+      }
+
+      try {
+        if (focusEl && focusEl.focus) {
+          focusEl.focus({ preventScroll: true });
+        }
+      } catch (e2) {
+        try {
+          if (focusEl && focusEl.focus) {
+            focusEl.focus();
+          } else if (addSubBtn) {
+            addSubBtn.focus();
+          }
+        } catch (e3) { /* ignore */ }
+      }
+
+      setTimeout(function () {
+        highlightEl.classList.remove('suggestion-attention-highlight');
+        highlightEl.classList.remove('subscription-controls-attention-highlight');
+      }, 2600);
+    };
+
+    if (wasClosed) {
+      setTimeout(runNudge, (pubsub.anim && pubsub.anim.durationMs ? pubsub.anim.durationMs : 340) + 60);
+    } else {
+      runNudge();
+    }
   };
 
   pubsub.generateTopicFromBuilder = function (setToPubTopic) {
@@ -1473,6 +1639,7 @@
       var pubEl = document.getElementById('pubTopic');
       if (pubEl) { pubEl.value = topic; }
     }
+    pubsub.renderTopicTaxonomyHints();
     pubsub.updatePubSubSuggestions();
   };
 
@@ -1535,6 +1702,7 @@
       tbDomain: pubsub.getDomainForCurrentContext(),
       tbNoun: 'hello-message',
       tbVerb: 'announced',
+      tbVersion: 'v1',
       tbProp1: countryKebab || 'united-states',
       tbProp2: languageKebab || 'english',
       tbProp3: randomNumber,
@@ -1545,7 +1713,7 @@
   };
 
   pubsub.applyTopicBuilderValues = function (values) {
-    ['tbDomain', 'tbNoun', 'tbVerb', 'tbProp1', 'tbProp2', 'tbProp3'].forEach(function (id) {
+    ['tbDomain', 'tbNoun', 'tbVerb', 'tbVersion', 'tbProp1', 'tbProp2', 'tbProp3'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el && values && Object.prototype.hasOwnProperty.call(values, id)) {
         el.value = values[id];
@@ -1638,10 +1806,11 @@
   };
 
   pubsub.clearTopicBuilder = function () {
-    ['tbDomain','tbNoun', 'tbVerb', 'tbProp1', 'tbProp2', 'tbProp3', 'tbProp4', 'generatedTopic'].forEach(function (id) {
+    ['tbDomain','tbNoun', 'tbVerb', 'tbVersion', 'tbProp1', 'tbProp2', 'tbProp3', 'tbProp4', 'generatedTopic'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) { el.value = ''; }
     });
+    pubsub.clearTopicTaxonomyHints();
     pubsub.updatePubSubSuggestions();
   };
 
@@ -1654,10 +1823,14 @@
     var domain = document.getElementById('tbDomain').value.trim();
     var noun = document.getElementById('tbNoun').value.trim();
     var verb = document.getElementById('tbVerb').value.trim();
+    var versionEl = document.getElementById('tbVersion');
     var prop1 = document.getElementById('tbProp1').value.trim();
     var prop3 = document.getElementById('tbProp3').value.trim();
     var prop4El = document.getElementById('tbProp4');
+    var hasVersion = !!versionEl;
     var hasProp4 = !!prop4El;
+    var versionProp = hasVersion ? (versionEl.value || '').trim() : '';
+    var versionToken = hasVersion ? (versionProp || 'v1') : '';
     var sentimentProp = hasProp4 ? prop3 : '';
     var msgIdProp = hasProp4 ? (prop4El.value || '').trim() : prop3;
 
@@ -1679,28 +1852,28 @@
     var suggestions = [];
     var sentimentSuggestionPattern = '';
     if (hasProp4 && domain && sentimentProp) {
-      sentimentSuggestionPattern = domain + '/hello-message/announced/*/*/' + sentimentProp + '/*';
+      sentimentSuggestionPattern = domain + '/hello-message/announced/' + (hasVersion ? versionToken + '/' : '') + '*/*/' + sentimentProp + '/*';
       suggestions.push(sentimentSuggestionPattern);
     }
     if (domain && noun && msgIdProp) {
       if (hasProp4) {
-        suggestions.push(domain + '/' + noun + '/*/*/*/*/' + msgIdProp);
+        suggestions.push(domain + '/' + noun + '/' + (hasVersion ? '*/' + versionToken + '/*/*/*/' : '*/*/*/*/') + msgIdProp);
       } else {
-        suggestions.push(domain + '/' + noun + '/*/*/*/' + msgIdProp);
+        suggestions.push(domain + '/' + noun + '/' + (hasVersion ? '*/' + versionToken + '/*/*/' : '*/*/*/') + msgIdProp);
       }
     }
     if (domain && noun && prop1) {
       if (hasProp4) {
-        suggestions.push(domain + '/' + noun + '/*/' + prop1 + '/*/*/*');
+        suggestions.push(domain + '/' + noun + '/' + (hasVersion ? '*/' + versionToken + '/' : '*/') + prop1 + '/*/*/*');
       } else {
-        suggestions.push(domain + '/' + noun + '/*/' + prop1 + '/*/*');
+        suggestions.push(domain + '/' + noun + '/' + (hasVersion ? '*/' + versionToken + '/' : '*/') + prop1 + '/*/*');
       }
     }
     if (domain && noun && verb) {
-      suggestions.push(domain + '/' + noun + '/' + verb + '/>');
+      suggestions.push(domain + '/' + noun + '/' + verb + '/' + (hasVersion ? versionToken + '/' : '') + '>');
     }
     if (domain) {
-      suggestions.push(domain + '/>');
+      suggestions.push(hasVersion ? (domain + '/*/*/' + versionToken + '/>') : (domain + '/>'));
     }
 
     // Render pills
