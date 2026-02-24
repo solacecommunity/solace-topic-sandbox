@@ -15,9 +15,16 @@ This web-based tool provides a ready-to-use sandbox environment, with the aim of
 
 ## Getting started quickly
 
-The repository contents can be cloned and run locally in an offline manner. 
+The tool is hosted and ready to use here 👉 https://solacecommunity.github.io/solace-topic-sandbox/
 
-Alternatively it is hosted and ready to use here 👉 https://solacecommunity.github.io/solace-topic-sandbox/
+Alternatively, the repository contents can be cloned and run locally in an offline manner. 
+
+#### Windows PowerShell Example:
+```
+git clone https://github.com/solacecommunity/solace-topic-sandbox.git
+cd solace-topic-sandbox
+start index.html
+```
 
 ## Resources
 This is not an officially supported Solace product.
