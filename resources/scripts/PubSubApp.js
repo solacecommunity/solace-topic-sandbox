@@ -51,6 +51,7 @@
     advancedIntroStep: -1,
     tryAdvancedState: 'pending',      // pending|suggested|dismissed|done
     taxonomyState: 'pending',         // pending|suggested|dismissed|done
+    taxonomyLevelTried: false,
     versionState: 'pending',          // pending|suggested|dismissed|done
     activeSuggestion: '',             // try_advanced|advanced_intro_info|topic_taxonomy|topic_taxonomy_info|topic_taxonomy_version|''
     taxonomyInfoStep: -1
@@ -61,6 +62,14 @@
     easing: 'ease',
     isAnimating: {},     // map of detailsId -> boolean
     resizeTimer: null
+  };
+
+  pubsub.taxonomyChangePrompt = {
+    changeType: '',
+    undone: false,
+    timerId: null,
+    secondsLeft: 0,
+    timerCanceledByUser: false
   };
 
   // subscriptions[pattern] = {
@@ -175,6 +184,18 @@
         pubsub.dispatchSuggestionEvent('advanced_payload_user_changed');
       });
     }
+    var taxonomyChangeCloseBtn = document.getElementById('taxonomyChangeClose');
+    if (taxonomyChangeCloseBtn) {
+      taxonomyChangeCloseBtn.addEventListener('click', function () {
+        pubsub.hideTaxonomyChangePrompt();
+      });
+    }
+    var taxonomyChangeUndoRedoBtn = document.getElementById('taxonomyChangeUndoRedo');
+    if (taxonomyChangeUndoRedoBtn) {
+      taxonomyChangeUndoRedoBtn.addEventListener('click', function () {
+        pubsub.handleTaxonomyChangeUndoRedo();
+      });
+    }
     var displayNameEl = document.getElementById('displayName');
     if (displayNameEl) {
       displayNameEl.addEventListener('input', function () {
@@ -230,6 +251,7 @@
     pubsub.clearSubStatus();
     pubsub.clearPubStatus();
     pubsub.hideActionSuggestionBanner();
+    pubsub.hideTaxonomyChangePrompt();
     pubsub.maybeShowSubGuidance();
     pubsub.log('Ready. Enter broker details, then Connect.');
   };
@@ -1038,7 +1060,7 @@
     if (!m || m.versionPromptTimerId || m.versionState !== 'pending') {
       return;
     }
-    if (m.taxonomyState !== 'done' || !document.getElementById('tbProp4')) {
+    if (!m.taxonomyLevelTried) {
       return;
     }
     if (document.getElementById('tbVersion')) {
@@ -1129,7 +1151,7 @@
     if (!m || m.versionState !== 'pending') {
       return;
     }
-    if (m.taxonomyState !== 'done' || !document.getElementById('tbProp4')) {
+    if (!m.taxonomyLevelTried) {
       return;
     }
     if (document.getElementById('tbVersion')) {
@@ -1195,7 +1217,7 @@
         pubsub.scheduleTaxonomyFallbackTimer();
       }
       pubsub.checkTopicTaxonomySuggestion();
-      if (m.taxonomyState === 'done' && m.versionState === 'pending' && !document.getElementById('tbVersion')) {
+      if (m.taxonomyLevelTried && m.versionState === 'pending' && !document.getElementById('tbVersion')) {
         m.versionPublishCount += 1;
         if (!m.versionFirstPublishTs) {
           m.versionFirstPublishTs = Date.now();
@@ -1367,6 +1389,130 @@
     hintsEl.textContent = '';
   };
 
+  pubsub.hideTaxonomyChangePrompt = function () {
+    var banner = document.getElementById('taxonomyChangeBanner');
+    if (pubsub.taxonomyChangePrompt.timerId) {
+      clearInterval(pubsub.taxonomyChangePrompt.timerId);
+      pubsub.taxonomyChangePrompt.timerId = null;
+    }
+    pubsub.taxonomyChangePrompt.changeType = '';
+    pubsub.taxonomyChangePrompt.undone = false;
+    pubsub.taxonomyChangePrompt.secondsLeft = 0;
+    pubsub.taxonomyChangePrompt.timerCanceledByUser = false;
+    if (banner && !banner.classList.contains('is-hidden')) {
+      banner.classList.add('is-hidden');
+    }
+  };
+
+  pubsub.updateTaxonomyChangePromptText = function () {
+    var hintEl = document.getElementById('taxonomyChangeHint');
+    var btn = document.getElementById('taxonomyChangeUndoRedo');
+    var prompt = pubsub.taxonomyChangePrompt;
+    if (!hintEl || !btn) {
+      return;
+    }
+    btn.textContent = prompt.undone ? 'Redo' : 'Undo';
+    if (prompt.timerCanceledByUser) {
+      hintEl.textContent = prompt.undone ?
+        'Change undone. Press Redo to reapply.' :
+        'Change reapplied. Press Undo to reverse.';
+      return;
+    }
+    hintEl.textContent = 'Auto-closing in ' + String(prompt.secondsLeft) + 's';
+  };
+
+  pubsub.startTaxonomyChangePromptCountdown = function () {
+    var prompt = pubsub.taxonomyChangePrompt;
+    if (prompt.timerId) {
+      clearInterval(prompt.timerId);
+      prompt.timerId = null;
+    }
+    prompt.secondsLeft = 15;
+    pubsub.updateTaxonomyChangePromptText();
+    prompt.timerId = setInterval(function () {
+      prompt.secondsLeft -= 1;
+      if (prompt.secondsLeft <= 0) {
+        pubsub.hideTaxonomyChangePrompt();
+        return;
+      }
+      pubsub.updateTaxonomyChangePromptText();
+    }, 1000);
+  };
+
+  pubsub.showTaxonomyChangePrompt = function (changeType) {
+    var banner = document.getElementById('taxonomyChangeBanner');
+    if (!banner) {
+      return;
+    }
+    pubsub.taxonomyChangePrompt.changeType = changeType || '';
+    pubsub.taxonomyChangePrompt.undone = false;
+    pubsub.taxonomyChangePrompt.timerCanceledByUser = false;
+    banner.classList.remove('is-hidden');
+    pubsub.startTaxonomyChangePromptCountdown();
+  };
+
+  pubsub.removeVersionTaxonomyLevel = function () {
+    var versionEl = document.getElementById('tbVersion');
+    var wrap;
+    if (!versionEl) {
+      return false;
+    }
+    wrap = versionEl.parentNode;
+    if (wrap && wrap.parentNode) {
+      wrap.parentNode.removeChild(wrap);
+    }
+    pubsub.generateTopicFromBuilder(false);
+    return true;
+  };
+
+  pubsub.removeSentimentPropertyLevel = function () {
+    var prop3El = document.getElementById('tbProp3');
+    var prop4El = document.getElementById('tbProp4');
+    var wrap;
+    if (!prop4El) {
+      return false;
+    }
+    if (prop3El) {
+      prop3El.value = (prop4El.value || '').trim();
+    }
+    wrap = prop4El.parentNode;
+    if (wrap && wrap.parentNode) {
+      wrap.parentNode.removeChild(wrap);
+    }
+    pubsub.uiFlags.sentimentSuggestionHighlightActive = false;
+    pubsub.generateTopicFromBuilder(false);
+    return true;
+  };
+
+  pubsub.handleTaxonomyChangeUndoRedo = function () {
+    var prompt = pubsub.taxonomyChangePrompt;
+    var type = prompt.changeType;
+    if (!type) {
+      return;
+    }
+    if (prompt.timerId) {
+      clearInterval(prompt.timerId);
+      prompt.timerId = null;
+    }
+    prompt.timerCanceledByUser = true;
+    if (!prompt.undone) {
+      if (type === 'sentiment') {
+        pubsub.removeSentimentPropertyLevel();
+      } else if (type === 'version') {
+        pubsub.removeVersionTaxonomyLevel();
+      }
+      prompt.undone = true;
+    } else {
+      if (type === 'sentiment') {
+        pubsub.enableSentimentPropertyLevel(true);
+      } else if (type === 'version') {
+        pubsub.enableVersionTaxonomyLevel(true);
+      }
+      prompt.undone = false;
+    }
+    pubsub.updateTaxonomyChangePromptText();
+  };
+
   pubsub.normalizeTopicToken = function (value) {
     return String(value || '').toLowerCase().trim().replace(/\s+/g, '-');
   };
@@ -1423,7 +1569,8 @@
     } catch (e) { /* ignore */ }
   };
 
-  pubsub.enableVersionTaxonomyLevel = function () {
+  pubsub.enableVersionTaxonomyLevel = function (suppressChangePrompt) {
+    if (suppressChangePrompt === undefined) { suppressChangePrompt = false; }
     var existing = document.getElementById('tbVersion');
     if (existing) {
       if (!existing.value || !existing.value.trim()) {
@@ -1461,10 +1608,15 @@
     pubsub.suggestionMachine.versionState = 'done';
     pubsub.clearVersionFallbackTimer();
     pubsub.generateTopicFromBuilder(false);
+    if (!suppressChangePrompt) {
+      pubsub.showTaxonomyChangePrompt('version');
+    }
     return input;
   };
 
-  pubsub.enableSentimentPropertyLevel = function () {
+  pubsub.enableSentimentPropertyLevel = function (suppressChangePrompt) {
+    if (suppressChangePrompt === undefined) { suppressChangePrompt = false; }
+    pubsub.suggestionMachine.taxonomyLevelTried = true;
     var existing = document.getElementById('tbProp4');
     var sentimentField = document.getElementById('tbProp3');
     if (existing) {
@@ -1509,6 +1661,9 @@
     pubsub.uiFlags.sentimentSuggestionHighlightActive = true;
     pubsub.syncPayloadLinkedTopicProperties();
     pubsub.generateTopicFromBuilder(false);
+    if (!suppressChangePrompt) {
+      pubsub.showTaxonomyChangePrompt('sentiment');
+    }
     return document.getElementById('tbProp3') || input;
   };
 
@@ -1724,6 +1879,7 @@
 
   pubsub.resetTopicBuilderToDefaults = function () {
     var defaults = pubsub.getTopicBuilderDefaults();
+    pubsub.hideTaxonomyChangePrompt();
     pubsub.applyTopicBuilderValues(defaults);
     pubsub.syncAdvancedPayloadExistingFieldsFromTopicDefaults(defaults);
     pubsub.syncPayloadLinkedTopicProperties();
@@ -1806,6 +1962,7 @@
   };
 
   pubsub.clearTopicBuilder = function () {
+    pubsub.hideTaxonomyChangePrompt();
     ['tbDomain','tbNoun', 'tbVerb', 'tbVersion', 'tbProp1', 'tbProp2', 'tbProp3', 'tbProp4', 'generatedTopic'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) { el.value = ''; }

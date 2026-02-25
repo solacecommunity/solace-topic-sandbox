@@ -243,6 +243,16 @@
                 </div>
               </div>
               <div id="topicTaxonomyHints" class="topic-taxonomy-hints" aria-live="polite"></div>
+              <div id="taxonomyChangeBanner" class="status-banner taxonomy-change-banner is-hidden" role="status" aria-live="polite">
+                <div class="taxonomy-change-header">
+                  <div class="status-title" id="taxonomyChangeTitle">Keep these changes?</div>
+                  <button type="button" class="taxonomy-change-close" id="taxonomyChangeClose" aria-label="Close">x</button>
+                </div>
+                <div class="status-hint" id="taxonomyChangeHint"></div>
+                <div class="suggestion-actions">
+                  <button type="button" class="ports-btn" id="taxonomyChangeUndoRedo">Undo</button>
+                </div>
+              </div>
             </div>
 
             <div class="form-grid form-grid-single form-grid-top-gap topic-field-divider">

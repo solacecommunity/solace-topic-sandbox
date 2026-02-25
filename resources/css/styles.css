@@ -643,6 +643,36 @@ textarea:focus {
   color: #4b5563;
 }
 
+#step4Card .taxonomy-change-banner {
+  margin-top: 8px;
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+#step4Card .taxonomy-change-banner .status-title,
+#step4Card .taxonomy-change-banner .status-hint {
+  color: #374151;
+}
+
+#step4Card .taxonomy-change-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#step4Card .taxonomy-change-close {
+  border: 1px solid #cfd4d9;
+  background: #ffffff;
+  color: #4b5563;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  line-height: 18px;
+  padding: 0;
+}
+
 #step4Card .style-toggle input[type="radio"],
 #step4Card .delivery-toggle input[type="radio"] {
   width: 14px;
